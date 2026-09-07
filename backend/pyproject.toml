@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "acme-salary-backend"
+version = "0.1.0"
+description = "FastAPI backend for ACME Salary Management System"
+authors = ["ACME Engineering <engineering@acme.corp>"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = "^3.14"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.34.0"}
+pydantic = "^2.10.0"
+pydantic-settings = "^2.6.0"
+sqlalchemy = "^2.0.36"
+alembic = "^1.14.0"
+psycopg = {extras = ["binary"], version = "^3.2.3"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+pytest-asyncio = "^0.25.0"
+httpx = "^0.28.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
