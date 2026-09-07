@@ -79,3 +79,64 @@ class PaginatedEmployeesResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class ExchangeRateResponse(BaseModel):
+    id: int
+    from_currency: str
+    to_currency: str
+    rate: Decimal
+    reference_date: date
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AnalyticsOverview(BaseModel):
+    reporting_currency: str = "USD"
+    total_headcount: int
+    total_payroll: Decimal
+    average_salary: Decimal
+    median_salary: Decimal
+    min_salary: Decimal
+    max_salary: Decimal
+
+
+class DepartmentMetric(BaseModel):
+    department: str
+    headcount: int
+    total_payroll: Decimal
+    average_salary: Decimal
+    median_salary: Decimal
+    min_salary: Decimal
+    max_salary: Decimal
+
+
+class DepartmentAnalyticsResponse(BaseModel):
+    reporting_currency: str = "USD"
+    departments: List[DepartmentMetric]
+
+
+class CountryMetric(BaseModel):
+    country: str
+    currency: str
+    headcount: int
+    total_payroll: Decimal
+    average_salary: Decimal
+    median_salary: Decimal
+
+
+class CountryAnalyticsResponse(BaseModel):
+    reporting_currency: str = "USD"
+    countries: List[CountryMetric]
+
+
+class SalaryBracket(BaseModel):
+    bracket: str
+    count: int
+    percentage: float
+
+
+class DistributionAnalyticsResponse(BaseModel):
+    reporting_currency: str = "USD"
+    brackets: List[SalaryBracket]
+

@@ -25,3 +25,11 @@ class InvalidSalaryAmountError(DomainError):
     def __init__(self, amount: float):
         super().__init__(f"Salary amount must be greater than zero, got: {amount}")
         self.amount = amount
+
+
+class CurrencyRateNotFoundError(DomainError):
+    def __init__(self, from_currency: str, to_currency: str):
+        super().__init__(f"Exchange rate not found from '{from_currency}' to '{to_currency}'.")
+        self.from_currency = from_currency
+        self.to_currency = to_currency
+
