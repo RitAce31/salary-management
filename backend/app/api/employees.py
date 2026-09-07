@@ -5,8 +5,10 @@ from app.db.session import get_db
 from app.domain.exceptions import EmployeeNotFoundError
 from app.domain.schemas import (
     EmployeeCreate,
+    EmployeeUpdate,
     EmployeeResponse,
     EmployeeDetailResponse,
+    NextEmployeeCodeResponse,
     SalaryCreate,
     SalaryResponse,
     PaginatedEmployeesResponse,
@@ -15,6 +17,9 @@ from app.services.employee_service import (
     create_employee,
     get_employee_by_id,
     list_employees,
+    update_employee,
+    delete_employee,
+    get_next_employee_code,
 )
 from app.services.salary_service import (
     add_salary_adjustment,
@@ -78,6 +83,15 @@ def create_new_employee(
     return EmployeeResponse(**emp_dict)
 
 
+@router.get("/next-code", response_model=NextEmployeeCodeResponse)
+def get_suggested_employee_code(
+    db: Session = Depends(get_db),
+):
+    """Suggests the next sequential employee code based on current workforce records."""
+    code = get_next_employee_code(db=db)
+    return NextEmployeeCodeResponse(next_employee_code=code)
+
+
 @router.get("/{id}", response_model=EmployeeDetailResponse)
 def get_employee(
     id: int,
@@ -95,6 +109,30 @@ def get_employee(
     emp_dict["current_salary"] = SalaryResponse.model_validate(current_sal) if current_sal else None
     emp_dict["salary_history"] = [SalaryResponse.model_validate(s) for s in history]
     return EmployeeDetailResponse(**emp_dict)
+
+
+@router.put("/{id}", response_model=EmployeeResponse)
+def update_existing_employee(
+    id: int,
+    employee_in: EmployeeUpdate,
+    db: Session = Depends(get_db),
+):
+    """Updates profile attributes for an existing employee."""
+    employee = update_employee(db=db, employee_id=id, employee_in=employee_in)
+    current_sal = get_current_salary(db=db, employee_id=employee.id)
+    emp_dict = EmployeeResponse.model_validate(employee).model_dump()
+    emp_dict["current_salary"] = SalaryResponse.model_validate(current_sal) if current_sal else None
+    return EmployeeResponse(**emp_dict)
+
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_employee(
+    id: int,
+    db: Session = Depends(get_db),
+):
+    """Permanently deletes an employee and cascades removal to all their salary history records."""
+    delete_employee(db=db, employee_id=id)
+    return None
 
 
 @router.get("/{id}/salaries", response_model=List[SalaryResponse])

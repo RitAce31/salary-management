@@ -3,10 +3,11 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from app.db.models import Employee, Salary
-from app.domain.schemas import EmployeeCreate
+from app.domain.schemas import EmployeeCreate, EmployeeUpdate
 from app.domain.exceptions import (
     DuplicateEmployeeCodeError,
     DuplicateEmailError,
+    EmployeeNotFoundError,
 )
 
 
@@ -138,3 +139,65 @@ def list_employees(
             current_salaries[sal.employee_id] = sal
 
     return employees, total, current_salaries
+
+
+def update_employee(
+    db: Session,
+    employee_id: int,
+    employee_in: EmployeeUpdate,
+) -> Employee:
+    """Updates profile attributes for an existing employee."""
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise EmployeeNotFoundError(employee_id)
+
+    if employee_in.email is not None and employee_in.email != employee.email:
+        existing_email = db.scalar(
+            select(Employee).where(
+                Employee.email == employee_in.email,
+                Employee.id != employee_id,
+            )
+        )
+        if existing_email:
+            raise DuplicateEmailError(employee_in.email)
+
+    update_data = employee_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(employee, field, value)
+
+    db.flush()
+    db.refresh(employee)
+    return employee
+
+
+def delete_employee(
+    db: Session,
+    employee_id: int,
+) -> None:
+    """Permanently deletes an employee. Associated salary records are removed via cascade."""
+    employee = db.get(Employee, employee_id)
+    if not employee:
+        raise EmployeeNotFoundError(employee_id)
+
+    db.delete(employee)
+    db.flush()
+
+
+def get_next_employee_code(db: Session) -> str:
+    """Generates the next sequential employee code (e.g. EMP-10001)."""
+    stmt = (
+        select(Employee.employee_code)
+        .where(Employee.employee_code.like("EMP-%"))
+        .order_by(func.length(Employee.employee_code).desc(), Employee.employee_code.desc())
+        .limit(1)
+    )
+    highest_code = db.scalar(stmt)
+    if highest_code:
+        _, _, num_str = highest_code.partition("-")
+        if num_str.isdigit():
+            next_num = int(num_str) + 1
+            return f"EMP-{next_num:05d}"
+
+    count = db.scalar(select(func.count(Employee.id))) or 0
+    return f"EMP-{count + 1:05d}"
+

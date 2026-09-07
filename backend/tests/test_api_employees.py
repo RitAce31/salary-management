@@ -217,3 +217,140 @@ def test_post_salary_adjustment_invalid_amount_returns_422(client):
         },
     )
     assert adj_resp.status_code == 422
+
+
+def test_get_next_employee_code_api(client):
+    """Test GET /api/employees/next-code returns expected next sequential employee code."""
+    resp = client.get("/api/employees/next-code")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "next_employee_code" in data
+    assert data["next_employee_code"].startswith("EMP-")
+
+
+def test_update_employee_api(client):
+    """Test PUT /api/employees/{id} updates profile attributes."""
+    create_resp = client.post(
+        "/api/employees",
+        json={
+            "employee_code": "EMP-UPD-001",
+            "first_name": "Bruce",
+            "last_name": "Wayne",
+            "email": "bruce.wayne@acme.corp",
+            "department": "Executive",
+            "job_title": "CEO",
+            "country": "United States",
+            "currency": "USD",
+            "hire_date": "2024-01-01",
+            "initial_salary": {
+                "amount": 200000.00,
+                "effective_date": "2024-01-01",
+            },
+        },
+    )
+    emp_id = create_resp.json()["id"]
+
+    update_resp = client.put(
+        f"/api/employees/{emp_id}",
+        json={
+            "job_title": "Executive Chairman",
+            "department": "Board of Directors",
+        },
+    )
+    assert update_resp.status_code == 200
+    updated_data = update_resp.json()
+    assert updated_data["job_title"] == "Executive Chairman"
+    assert updated_data["department"] == "Board of Directors"
+    assert updated_data["first_name"] == "Bruce"
+
+
+def test_update_employee_duplicate_email_conflict(client):
+    """Test PUT /api/employees/{id} returns 409 Conflict if email is already taken by another employee."""
+    c1 = client.post(
+        "/api/employees",
+        json={
+            "employee_code": "EMP-DUP-E1",
+            "first_name": "User",
+            "last_name": "One",
+            "email": "user.one@acme.corp",
+            "department": "IT",
+            "job_title": "Specialist",
+            "country": "United States",
+            "currency": "USD",
+            "hire_date": "2024-01-01",
+            "initial_salary": {"amount": 60000.00, "effective_date": "2024-01-01"},
+        },
+    )
+    c2 = client.post(
+        "/api/employees",
+        json={
+            "employee_code": "EMP-DUP-E2",
+            "first_name": "User",
+            "last_name": "Two",
+            "email": "user.two@acme.corp",
+            "department": "IT",
+            "job_title": "Specialist",
+            "country": "United States",
+            "currency": "USD",
+            "hire_date": "2024-01-01",
+            "initial_salary": {"amount": 60000.00, "effective_date": "2024-01-01"},
+        },
+    )
+    emp2_id = c2.json()["id"]
+
+    dup_resp = client.put(
+        f"/api/employees/{emp2_id}",
+        json={"email": "user.one@acme.corp"},
+    )
+    assert dup_resp.status_code == 409
+
+
+def test_update_employee_not_found(client):
+    """Test PUT /api/employees/{id} returns 404 for nonexistent employee."""
+    resp = client.put(
+        "/api/employees/999999",
+        json={"first_name": "Ghost"},
+    )
+    assert resp.status_code == 404
+
+
+def test_delete_employee_api_cascades_salaries(client):
+    """Test DELETE /api/employees/{id} removes employee and cascades to salary records."""
+    create_resp = client.post(
+        "/api/employees",
+        json={
+            "employee_code": "EMP-DEL-001",
+            "first_name": "Peter",
+            "last_name": "Parker",
+            "email": "peter.parker@acme.corp",
+            "department": "Media",
+            "job_title": "Photographer",
+            "country": "United States",
+            "currency": "USD",
+            "hire_date": "2024-01-01",
+            "initial_salary": {
+                "amount": 40000.00,
+                "effective_date": "2024-01-01",
+            },
+        },
+    )
+    emp_id = create_resp.json()["id"]
+
+    # Delete employee
+    del_resp = client.delete(f"/api/employees/{emp_id}")
+    assert del_resp.status_code == 204
+
+    # Verify 404 on get
+    get_resp = client.get(f"/api/employees/{emp_id}")
+    assert get_resp.status_code == 404
+
+    # Verify 404 on salary history
+    sal_resp = client.get(f"/api/employees/{emp_id}/salaries")
+    assert sal_resp.status_code == 404
+
+
+def test_delete_employee_not_found(client):
+    """Test DELETE /api/employees/{id} returns 404 for nonexistent employee."""
+    resp = client.delete("/api/employees/999999")
+    assert resp.status_code == 404
+

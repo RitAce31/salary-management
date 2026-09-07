@@ -60,6 +60,39 @@ class EmployeeCreate(EmployeeBase):
     initial_salary: SalaryCreate
 
 
+class EmployeeUpdate(BaseModel):
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    email: Optional[EmailStr] = None
+    department: Optional[str] = Field(None, min_length=1, max_length=100)
+    job_title: Optional[str] = Field(None, min_length=1, max_length=100)
+    country: Optional[str] = Field(None, min_length=1, max_length=100)
+    currency: Optional[str] = Field(None, min_length=3, max_length=3)
+    hire_date: Optional[date] = None
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency_code(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip().upper()
+            if len(v) != 3 or not v.isalpha():
+                raise ValueError("Currency must be a 3-letter ISO code.")
+        return v
+
+    @field_validator("first_name", "last_name", "department", "job_title", "country")
+    @classmethod
+    def strip_whitespace(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if not v:
+                raise ValueError("Field cannot be empty or whitespace only.")
+        return v
+
+
+class NextEmployeeCodeResponse(BaseModel):
+    next_employee_code: str
+
+
 class EmployeeResponse(EmployeeBase):
     id: int
     created_at: datetime
