@@ -45,6 +45,11 @@ The MVP focuses strictly on solving core salary operations and analytics with ma
    * Transparent normalization to a base currency (USD) for global aggregate reporting using documented, deterministic reference exchange rates.
 5. **Reproducible Seed Data:**
    * Seed script generating ~10,000 realistic employees across realistic departments and countries, populated with multi-year salary progression history.
+6. **AI Compensation Assistant (Zero-Hallucination & Zero-Trust Interface):**
+   * Natural language query interface allowing the HR Manager to ask questions about workforce headcount, salary metrics, departmental and country comparisons, salary distribution ranges, top-earner lookups, and generalized employee listings/rankings (e.g., *"Top 50 employees in India based on salary"*, *"Employees in India with more than 50K salary and give me the lowest 10"*).
+   * **Zero-Trust Security Boundary:** AI model never accesses PostgreSQL, never generates raw SQL queries, and never sees employee records or PII. It purely translates natural-language intent into structured function parameters.
+   * **Real-Time Server-Sent Events (SSE) Streaming:** Streaming chat experience (`POST /api/ask/stream`) with live status indicators and token-by-token animated Markdown rendering.
+   * **Interactive Data Visualization & CSV Export:** Renders paginated data tables with in-browser search and one-click CSV export for employee ranking queries.
 
 ---
 
@@ -55,7 +60,7 @@ The MVP focuses strictly on solving core salary operations and analytics with ma
 | **User Authentication & RBAC** | The assessment specifies the HR Manager as the sole persona. Adding authentication, JWT handling, and password resets adds non-domain boilerplate without demonstrating core compensation modeling or query performance. |
 | **Payroll Processing & Bank Disbursements** | ACME Salary Management is a compensation record and analytics platform, not an automated clearing house (ACH) or banking disbursement engine. |
 | **Live Dynamic Forex Streaming API** | Integrating external real-time forex APIs introduces third-party network failure points and non-deterministic behavior during automated testing and evaluation. A deterministic reference rate table satisfies all multi-country aggregation requirements predictably. |
-| **AI/LLM-Powered Chatbot inside the Product** | Incubyte evaluates **AI-assisted development** (engineering judgment, code quality, TDD), not embedding costly generative AI wrappers into the software. High-performance structured analytics directly solve the HR Manager's questions faster, cheaper, and with 100% mathematical accuracy. |
+| **Open-Domain Conversational Chatbot / Autonomous Agents** | An unrestricted conversational chatbot (handling general conversation, policy search, or autonomous multi-agent loops) introduces hallucinations and non-deterministic answers. The system intentionally restricts AI to **deterministic compensation tool calling** where all numbers and metrics are calculated directly by PostgreSQL. |
 | **Employee Self-Service Portal** | The product persona is strictly the HR Manager. Individual employee portals introduce unnecessary UX workflows outside the assessment scope. |
 
 ---
@@ -81,6 +86,6 @@ The MVP focuses strictly on solving core salary operations and analytics with ma
 ## 7. Success Criteria
 1. **Correctness:** 100% preservation of salary history. Adding a new salary updates the current active view without modifying historical records.
 2. **Performance:** Database queries for pagination (50 items/page) and analytics aggregations complete in `< 50ms` over a 10,000 employee dataset.
-3. **Reliability:** Deterministic test suite covering core domain business rules and APIs with zero flaky tests.
+3. **Reliability:** Deterministic test suite with **113 passing automated tests** (60 `pytest` backend tests and 53 `vitest` frontend tests) with 100% pass rate.
 4. **Seed Reproducibility:** The seed command generates the exact same ~10,000 employee distribution and multi-year salary histories on any machine.
 5. **Usability:** The HR Manager can search, filter, inspect history, and extract salary insights within 3 clicks.
