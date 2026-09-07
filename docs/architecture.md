@@ -1,6 +1,6 @@
 # System Architecture & Design Specification
 
-This document details the architecture, domain model, database schema, API design, deployment structure, and planned **Compensation Q&A** interface for the **ACME Salary Management System**.
+This document details the architecture, domain model, database schema, API design, deployment structure, and the **AI Compensation Assistant** for the **ACME Salary Management System**.
 
 ---
 
@@ -13,7 +13,8 @@ The primary system goals are:
 * Enforce an immutable, append-only salary history model so that previous salary records are never overwritten.
 * Support multi-country compensation by preserving original local salary amounts while enabling normalized organizational analytics in a common reporting currency.
 * Provide organizational compensation analytics derived directly from database queries.
-* Provide an optional, tightly bounded natural-language interface (**Compensation Q&A**) for compensation questions without compromising data integrity or system reliability.
+* Provide a **Zero-Trust AI Compensation Assistant** for natural-language queries that translates user questions into safe, structured database operations without compromising employee data privacy or mathematical accuracy.
+* Deliver a responsive, real-time user experience via Server-Sent Events (SSE) streaming and interactive data visualization.
 * Maintain an understandable, maintainable architecture with low operational complexity.
 
 ---
@@ -28,13 +29,15 @@ graph TD
         SPA[Single Page Application - Vite]
         State[View State & Navigation]
         ClientAPI[API Client Layer]
+        SSEClient[SSE Streaming Reader]
     end
 
     subgraph Backend [FastAPI Application]
         Router[API Routers]
         Schemas[Pydantic Validation / Schemas]
-        AIService[Compensation Q&A Service]
-        Services[Domain & Application Services]
+        AIService[AI Intent Translation - Gemini Service]
+        AssistantService[Assistant Execution & Code Formatting]
+        Services[Domain & Analytics Services]
         CurrencyService[Isolated Currency Converter]
         Repo[SQLAlchemy Data Access Layer]
     end
@@ -45,14 +48,17 @@ graph TD
 
     SPA --> State
     State --> ClientAPI
+    State --> SSEClient
     ClientAPI -->|HTTPS / REST JSON| Router
+    SSEClient -->|SSE Stream /api/ask/stream| Router
     Router --> Schemas
-    Router -->|NL Question| AIService
-    AIService -->|Structured Tool Call| Services
-    Schemas --> Services
+    Router -->|User Question| AIService
+    AIService -->|Function Call Intent & Args| AssistantService
+    AssistantService -->|Validated Parameters| Services
     Services --> CurrencyService
     Services --> Repo
     Repo -->|SQLAlchemy / psycopg| PG
+    AssistantService -->|Code-Logic Formatted Markdown & Data| Router
 ```
 
 ### Architectural Rationale
@@ -66,12 +72,13 @@ graph TD
 
 | Layer | Technology | Selection Rationale |
 | :--- | :--- | :--- |
-| **Frontend** | React, Vite, TypeScript | Modern, performant UI library with strong static typing and standard tooling. |
-| **Backend** | Python, FastAPI, Poetry | High-performance asynchronous-ready web framework with automatic OpenAPI documentation and strict Pydantic validation. Dependency management via Poetry. |
+| **Frontend** | React 19, Vite, TypeScript, Material-UI (MUI v6) | Modern, performant UI library with strong static typing, enterprise design components, and instant hot reloading. |
+| **Backend** | Python 3.12+, FastAPI, Poetry | High-performance asynchronous-ready web framework with automatic OpenAPI documentation and strict Pydantic v2 validation. Dependency management via Poetry. |
 | **ORM / Data Access** | SQLAlchemy 2.0 | Explicit query construction, clean transactional management, and protection against SQL injection. |
-| **Database** | PostgreSQL | Robust relational database with transactional integrity, rich analytical functions, and strong hosting support. |
-| **AI Integration (Planned)** | LLM with Function/Tool Calling | Lightweight SDK abstraction to translate natural-language questions into controlled analytics operations. No vector databases or complex agent frameworks. |
-| **Testing** | pytest, Vitest, React Testing Library | Fast, deterministic test execution for backend domain/API logic and frontend UI components. Mocked AI adapters for deterministic test execution. |
+| **Database** | PostgreSQL 16 | Robust relational database with transactional integrity, decimal precision, rich analytical functions (`PERCENTILE_CONT`), and composite B-tree indexes. |
+| **AI Integration** | Google Gemini Function Calling (`gemini-3.7-flash`) | Zero-Trust natural language intent parsing. The model only receives function schemas and outputs parameters. It has **zero database access**, never executes SQL, and never sees employee data. |
+| **Streaming Protocol** | Server-Sent Events (SSE) | Lightweight, unidirectional HTTP streaming (`POST /api/ask/stream`) for real-time status updates and token-by-token text delivery without WebSocket overhead. |
+| **Testing** | pytest (60 tests), Vitest (53 tests) — **113 Total Tests** | Fast, deterministic test execution for backend domain/API logic and frontend UI components. Mocked AI adapters for 100% deterministic test runs without live API keys. |
 
 ---
 
@@ -278,161 +285,129 @@ class CurrencyConversionService:
         """Converts an amount from one currency to another using reference rates."""
         ...
 ```
-* **Extensibility:** Isolating this logic ensures that the underlying rate source can be swapped without touching core employee or salary domain logic.
+* **Extensibility:** Isolating this logic ensures that the underlying rate source can be## 9. AI Compensation Assistant (Natural-Language Analytics Interface)
 
----
-
-## 9. Compensation Q&A (Natural-Language Analytics Interface)
-
-### 9.1 Purpose & Strategic Positioning
-The goal of this feature is **not** to build an open-ended autonomous HR assistant. The goal is to demonstrate that an engineering team can **use AI purposefully on top of a well-designed Python backend system**.
-
-We name this capability **Compensation Q&A** and define its boundary as:
-> **Natural-language questions over employee and salary analytics.**
-
-It is an additive, decoupled interface. If an evaluator considers structured dashboards sufficient on their own, Compensation Q&A remains a cleanly isolated, non-breaking enhancement.
+### 9.1 Purpose & Zero-Trust Architecture
+The AI Compensation Assistant enables the HR Manager to query compensation and workforce metrics using natural language while strictly enforcing a **Zero-Trust Security Boundary**:
+* **Zero Database Access:** The AI model is never given database credentials, connection strings, or query execution privileges.
+* **Zero SQL Generation:** The AI never generates raw SQL strings, eliminating SQL injection and prompt injection risks.
+* **Zero Employee Data Exposure:** The AI is never passed database rows, employee names, emails, salaries, or personally identifiable information (PII). It only receives function tool schemas and user question text.
+* **Zero Hallucination:** The AI only extracts query intent and filters. All calculations, rankings, averages, and aggregations are performed natively by PostgreSQL and Python domain services.
 
 ```text
-                    AI SCOPE SPECTRUM
+                    ZERO-TRUST ARCHITECTURE BOUNDARY
 
-       Too narrow                 IDEAL                  Too broad
-          │                         │                        │
-          ▼                         ▼                        ▼
-"Average salary" only      Compensation Analytics      General HR Assistant
-                           Q&A                         + RAG / Vector DB
-                                                       + Documents / Policies
-                                                       + Recommendations
-                                                       + Autonomous Agents
+┌────────────────────────┐      User Question      ┌─────────────────────────────┐
+│       HR Manager       │ ──────────────────────> │    FastAPI Application      │
+│  (React Frontend UI)   │                         │  (app/services/assistant)   │
+└────────────────────────┘                         └──────────────┬──────────────┘
+            ▲                                                     │
+            │ SSE Stream (Tokens + Table Data)                    │ Function Declarations Only
+            │                                                     │ (Zero Employee Data)
+            │                                                     ▼
+┌───────────┴────────────┐                          ┌─────────────────────────────┐
+│  Code-Logic Formatter  │                          │    Google Gemini Service    │
+│ (Deterministic Python) │                          │     (gemini-3.7-flash)      │
+└────────────────────────┘                          └──────────────┬──────────────┘
+            ▲                                                     │
+            │ Verified Result Set                                 │ Tool Call + Parameters Only
+            │                                                     │ (e.g., query_employees)
+┌───────────┴────────────┐                                        ▼
+│  PostgreSQL 16 Engine  │ <──────────────────────────────────────┘
+│ (Parameterized Query)  │    Validated & Sanitized SQL Parameters
+└────────────────────────┘
 ```
 
 ---
 
-### 9.2 In-Scope Query Categories
-The natural language engine is intentionally calibrated to support four meaningful compensation categories:
+### 9.2 Tool Declarations & Supported Operations
+The AI model maps natural language questions into one of seven strictly typed and validated tool operations:
 
-1. **Employee Analytics:**
-   * *"How many employees are there?"*
-   * *"How many employees are in India?"*
-   * *"How many employees are in Engineering?"*
-   * *"How many employees are in Engineering in India?"*
-2. **Salary Analytics:**
-   * *"What is the average salary?"*
-   * *"What is the highest and lowest salary?"*
-   * *"What is the average salary in Engineering?"*
-   * *"What is the average salary in India?"*
-3. **Grouping & Comparison:**
-   * *"Which department has the highest average salary?"*
-   * *"Which country has the highest average salary?"*
-   * *"Compare Engineering and Finance."*
-   * *"Show salary by department."*
-   * *"Show salary by country."*
-4. **Salary Distribution:**
-   * *"How many employees earn between 50,000 and 100,000?"*
+| Tool Name | Purpose | Key Parameters |
+| :--- | :--- | :--- |
+| `query_employees` | General multi-employee ranking, filtering, and listing (e.g. "top 50 employees in India", "employees in India > 50K salary, lowest 10") | `country`, `department`, `job_title`, `min_salary`, `max_salary`, `currency`, `sort_by` (`salary`/`name`), `sort_order` (`asc`/`desc`), `limit` (1-100) |
+| `get_employee_count` | Headcount metrics across the organization, departments, or countries | `department`, `country` |
+| `get_salary_metrics` | Overall, departmental, or regional salary statistics (mean, median, min, max) | `metric` (`average`, `median`, `highest`, `lowest`), `department`, `country` |
+| `compare_departments` | Side-by-side compensation and headcount comparison between two departments | `department_a`, `department_b` |
+| `compare_countries` | Side-by-side compensation and headcount comparison between two countries/regions | `country_a`, `country_b` |
+| `get_salary_range_count`| Workforce distribution count and percentage within a specified salary band | `min_salary`, `max_salary`, `currency` |
+| `get_top_earning_employee` | Single highest earner lookup (resolves "Who" vs "What") with profile details | `department`, `country` |
 
 ---
 
-### 9.3 Explicit Exclusions (What Compensation Q&A is NOT)
-To protect scope and maintain engineering defensibility, the following are strictly out of scope:
-* ❌ Open-domain HR chatbot / conversation partner
-* ❌ Employee recommendation systems (*"Who deserves a promotion?"*)
-* ❌ Compensation negotiation advisors (*"What should we pay a new engineer?"*)
-* ❌ HR policy search or company handbook QA
-* ❌ Resume or performance review analysis
-* ❌ Vector databases (Pinecone, Chroma, Weaviate) or RAG pipelines
-* ❌ Autonomous multi-agent frameworks (LangChain, AutoGen, CrewAI)
-* ❌ Unrestricted LLM-generated SQL
+### 9.3 Execution Pipeline & Code-Logic Formatting
+Once Gemini emits a tool call, the backend execution pipeline operates deterministically:
+
+1. **Parameter Validation & Sanitization:** Parameters emitted by the LLM are validated against known departments, supported country codes, valid sort orders (`asc`/`desc`), and bounded limits (1 to 100).
+2. **Parameterized Database Execution:** The backend runs optimized SQL queries via SQLAlchemy with parameters bound safely:
+   - For `query_employees`, a Common Table Expression (CTE) with `DISTINCT ON (employee_id)` resolves current active salaries (`effective_date <= CURRENT_DATE`), applies threshold and regional filters, and applies sorting/limits.
+3. **Deterministic Code-Logic Formatting:**
+   - Rather than passing database rows back to the LLM for a second generative turn (which would violate employee data privacy and risk numerical hallucination), the response is formatted using **pure Python code logic**.
+   - Generates human-readable Markdown summaries, contextual insights, and structured data payloads.
+   - Attaches an `AI Verified` provenance metadata tag confirming the query operation, record count, and normalization base.
 
 ---
 
-### 9.4 Natural Language Flexibility vs. Execution Control
-The system accommodates natural human phrasing without forcing users to type programmatic syntax:
+### 9.4 Real-Time Server-Sent Events (SSE) Streaming
+To deliver a responsive user experience without blocking the server, the assistant provides a streaming endpoint (`POST /api/ask/stream`):
 
-* Users can say:
-  * *"What's the average pay for engineers?"*
-  * *"How much do people in Engineering earn on average?"*
-  * *"What's Engineering's average compensation?"*
-* In all cases, the LLM maps the natural-language input to the same structured intent:
-  ```json
-  {
-    "operation": "get_average_salary",
-    "parameters": {
-      "department": "Engineering"
-    }
-  }
-  ```
-
-Once this structured intent is emitted, **the application takes complete control**:
-
-```text
-Natural Language Question
-       ↓
-      LLM
-       ↓
-Structured Intent (Tool Call)
-       ↓
-Backend Validation
-       ↓
-Analytics Service (Existing business logic)
-       ↓
-PostgreSQL
-       ↓
-Actual Mathematical Result
-```
+* **Non-Blocking Asynchronous Processing:** The Gemini SDK call and PostgreSQL queries are dispatched to worker threads using `asyncio.to_thread`, keeping FastAPI's event loop completely non-blocking.
+* **Event Protocol:**
+  - `event: status` — Real-time progress updates (`"Understanding query..."`, `"Executing database analysis..."`, `"Formatting verified response..."`).
+  - `event: token` — Incremental tokens of the formatted Markdown response, streamed with natural pacing.
+  - `event: data` — Structured JSON payload containing full table data, visualizer configurations, and metadata.
+  - `event: done` — Signal marking completion of the stream.
+  - `event: error` — Graceful error reporting if an unexpected issue occurs.
 
 ---
 
-### 9.5 UI Presentation in React
-In the React application, Compensation Q&A is rendered as a clean, focused widget within the HR workspace:
+### 9.5 UI Presentation & Interactive Visualization
+The frontend renders responses dynamically based on the returned operation:
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│ Ask About Compensation                                  │
-│                                                         │
-│ [ "Which department has the highest average salary?"  ] │
-│                                                [ Ask ]  │
-└─────────────────────────────────────────────────────────┘
-
-Answer:
-Engineering has the highest average salary at $110,000 USD.
-
-Based on:
-• 3,400 Engineering employees
-• Current active salary records (normalized to USD)
-```
+1. **Live Thinking Pills & Typing Cursor:** Users see live status chips indicating query analysis and database execution, followed by smooth animated Markdown rendering.
+2. **Interactive Employee Data Table (for `query_employees`):**
+   - Displays ranked results with Employee Code, Name, Department, Job Title, Country, and Current Salary (both local paid currency and normalized USD).
+   - Client-side live search filtering and paginated table navigation.
+   - **One-Click CSV Export:** HR managers can instantly export the filtered list to a CSV spreadsheet.
+3. **Comparison Visualizers:** Side-by-side comparison tables for departmental or country compensation metrics.
+4. **Workforce Share Progress Cards:** Visual percentage and headcount share bars for salary range distribution queries.
+5. **Employee Profile Cards:** Highlighting top earners with compensation breakdowns and job details.
+6. **Clean Enterprise Design:** All vendor-specific branding is replaced with clean enterprise terminology (`AI Verified`, `Enterprise Database`).
 
 ---
 
-### 9.6 Core Architectural Decisions: Why NOT RAG & Why NOT Arbitrary SQL?
+### 9.6 Core Architectural Decisions: Why This Design?
 
 #### Decision 1: Structured Tool Calling Instead of RAG / Vector Embeddings
-* **Rationale:** ACME's data is structured relational data in PostgreSQL (`employees`, `salaries`, `departments`, `countries`). Vector similarity search across embeddings cannot calculate averages, medians, or headcount sums. RAG is designed for unstructured document search, not mathematical compensation queries.
+* **Rationale:** ACME's compensation records are structured relational rows in PostgreSQL. Vector similarity search across embeddings cannot compute mathematical sums, medians, rankings, or salary thresholds. RAG is designed for unstructured document search, not mathematical compensation queries.
 
 #### Decision 2: Controlled Tool Whitelist Instead of Raw SQL Generation
-* **Rationale:** Permitting an LLM to generate raw SQL to execute directly against the database creates catastrophic prompt-injection vectors, date-filtering bugs (failing to respect `effective_date <= CURRENT_DATE`), and non-deterministic queries. A strictly bounded tool whitelist guarantees testability, performance, and complete data safety.
+* **Rationale:** Allowing an LLM to generate arbitrary SQL creates severe SQL injection risks, date-filtering bugs (e.g. failing to respect `effective_date <= CURRENT_DATE`), and non-deterministic table joins. A bounded tool whitelist guarantees complete database safety and testability.
 
-#### Decision 3: Zero Calculation in the LLM
-* **Rationale:** The LLM's role is strictly language interpretation. PostgreSQL and the backend `AnalyticsService` perform all calculations, ensuring 100% mathematical accuracy and zero hallucination risk.
+#### Decision 3: Code-Logic Formatting Instead of Second-Turn LLM Synthesis
+* **Rationale:** Sending retrieved employee records back to an LLM for text generation exposes employee PII to third-party APIs and reintroduces hallucination risk. Formatted deterministic Markdown generated by Python ensures 100% data privacy and 100% mathematical fidelity.
+
+#### Decision 4: Server-Sent Events (SSE) Instead of WebSockets
+* **Rationale:** Assistant queries are request-response interactions that stream text unidirectionally from server to client. SSE operates over standard HTTP/2, requires no stateful connection management or socket handshake infrastructure, and handles automatic reconnection cleanly.
 
 ---
 
 ### 9.7 Error Handling & Guardrails
-* **Unsupported Question:** If a question cannot be resolved to the four supported analytics categories, the system returns a helpful guidance message:
-  > *"I can currently answer questions about employee counts, salary averages, salary comparisons, salary ranges, departments, and countries."*
-* **Missing Parameters:** When a question lacks essential context (*"What is the average salary in?"*), the backend responds requesting clarification rather than guessing.
-* **Invalid Filter Values:** If a user specifies a non-existent department or country, the backend validates inputs against known entities before query execution.
-* **Graceful Degradation:** Core employee directory, salary history, and visual dashboard features have **zero dependency on the AI service**. If the AI provider is unavailable, core business operations remain fully functional.
+* **Out-of-Scope Guidance:** If a user asks an unsupported question (e.g., general conversation or HR policy), the system returns a polite guidance message with examples of supported compensation queries.
+* **Missing Parameters:** When a question lacks necessary context (*"What is the average salary in?"*), the assistant asks for clarification rather than guessing.
+* **Graceful Degradation:** The core employee directory, salary history, and visual dashboard have **zero dependency on the AI service**. If the AI provider is unreachable, core business operations remain fully functional.
 
 ---
 
-### 9.8 Testing Strategy for AI
-* **Deterministic Unit Tests:** Intent parsing is verified using representative query sets against a **mocked AI provider**, ensuring test suites execute deterministically in milliseconds without live API keys or network latency.
-* **Decoupled Business Logic Tests:** All underlying analytics functions are tested independently via standard pytest integration tests against PostgreSQL test fixtures.
+### 9.8 Testing Strategy
+* **Deterministic Unit Tests:** Intent parsing is verified using representative query sets against a mocked AI provider in `pytest`, ensuring the test suite executes in milliseconds without live API keys or network latency.
+* **Parameterized SQL Tests:** All underlying analytics functions and `query_employees` CTE queries are tested against PostgreSQL fixtures with 100% pass rate.
 
 ---
 
 ## 10. API Architecture
 
-The backend exposes a JSON REST API conforming to standard HTTP semantics.
+The backend exposes a JSON REST API and Server-Sent Events stream conforming to standard HTTP semantics.
 
 ### Endpoints
 
@@ -450,8 +425,14 @@ The backend exposes a JSON REST API conforming to standard HTTP semantics.
 * `GET /api/analytics/by-department?reporting_currency=USD`: Departmental breakdown of headcount and normalized payroll metrics.
 * `GET /api/analytics/by-country?reporting_currency=USD`: Regional breakdown showing local employee counts alongside normalized compensation metrics.
 
-#### Compensation Q&A Interface
-* `POST /api/ask`: Translates a natural-language compensation question into a structured operation and returns verified results.
+#### AI Compensation Assistant
+* `POST /api/ask/stream`: **Server-Sent Events (SSE)** endpoint streaming real-time status, text tokens, and structured table data.
+  * **Request Body:** `{"question": "Top 50 employees in India based on salary"}`
+  * **Streamed Events:**
+    - `event: status` -> `{"text": "Executing database analysis..."}`
+    - `event: token` -> `{"text": "Here are the top 50 employees in India..."}`
+    - `event: data` -> Structured response containing `employees` list, `operation`, and metadata.
+* `POST /api/ask`: Standard synchronous REST endpoint returning the complete formatted answer, structured data, and metadata.
   * **Request Body:**
     ```json
     {
@@ -484,27 +465,32 @@ The frontend is a single-page application built with React, Vite, and TypeScript
 ```text
 frontend/src/
 ├── components/
-│   ├── layout/         # Header, navigation, shell layout
-│   ├── employee/       # Directory table, search/filter bar, detail modal, salary history list
+│   ├── layout/         # Header, navigation sidebar, main content shell
+│   ├── employees/      # Directory table, search/filter bar, salary history modal, add employee modal
 │   ├── analytics/      # Metric cards, department breakdown, country breakdown
-│   ├── ai/             # Compensation Q&A card, input bar, structured answer display
-│   └── common/         # Buttons, inputs, modals, pagination, loading indicators
+│   └── common/         # Loading spinner, error alerts, empty states, pagination
+├── pages/
+│   ├── EmployeeDirectory.tsx      # Main employee directory with filters and modals
+│   ├── AnalyticsDashboard.tsx     # Executive analytics with KPI cards and charts
+│   └── CompensationAssistant.tsx  # Natural language compensation assistant with visualizers
 ├── services/
-│   └── api.ts          # Centralized HTTP client wrapping fetch with error handling
+│   ├── api.service.ts   # Centralized API service wrapping endpoints
+│   └── apiClient.ts     # Fetch client with standardized error handling
 ├── types/
-│   └── index.ts        # TypeScript interfaces matching API schemas
-└── styles/
-    └── index.css       # Design tokens and core component styling
+│   ├── employee.ts      # Employee, Salary, and filter types
+│   ├── analytics.ts     # Analytics metrics and breakdown types
+│   └── assistant.ts     # Natural language request/response types
+└── App.tsx              # Root component with tab navigation
 ```
 
 ---
 
 ## 12. Security Considerations
 
-Even without full multi-user authentication in MVP scope, basic application security principles apply:
+Even without full multi-user authentication in MVP scope, strict enterprise security principles are enforced:
 1. **Injection Protection:** All database interactions use SQLAlchemy parameterized queries, preventing SQL injection.
-2. **AI Boundary Isolation:** The LLM is never given direct SQL access, raw database connections, or connection strings. It can only emit whitelisted tool declarations that are strictly validated before execution.
-3. **Data Privacy in AI Calls:** Only the user's question and schema definitions are transmitted to the LLM. The underlying database rows (employee records, PII, names) are never passed to the LLM.
+2. **Zero-Trust AI Boundary:** The AI model is never given direct SQL access, raw database connections, connection strings, or query execution privileges. It can only emit whitelisted tool declarations that are strictly validated and executed by backend services.
+3. **Zero PII / Employee Data Exposure:** Only the user's question string and tool declaration schemas are transmitted to the external LLM provider. The underlying database rows (employee records, PII, names, salaries) are never sent to the LLM. All result formatting, summaries, and tabular presentation are generated by deterministic backend code logic.
 4. **Input Validation:** All API inputs are strictly validated through Pydantic models (e.g. positive monetary amounts, valid currency codes, valid email formats).
 5. **CORS Configuration:** Production deployments restrict allowed origins to the deployed frontend domain rather than wildcard `*`.
 6. **Credential Isolation:** Database connection strings and AI API keys are loaded via environment variables and never committed to version control.

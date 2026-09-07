@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: acme-salary-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install poetry && poetry install --only main
+    startCommand: poetry run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
