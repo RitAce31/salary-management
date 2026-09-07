@@ -39,6 +39,7 @@ describe('Layout Components', () => {
       expect(screen.getByText('Compensation Portal')).toBeInTheDocument();
       expect(screen.getByText('Employee Directory')).toBeInTheDocument();
       expect(screen.getByText('Compensation Analytics')).toBeInTheDocument();
+      expect(screen.getByText('AI Compensation Assistant')).toBeInTheDocument();
     });
 
     it('triggers onSelectTab when navigation tab is clicked', () => {
@@ -48,6 +49,10 @@ describe('Layout Components', () => {
       const analyticsButton = screen.getByRole('button', { name: /compensation analytics/i });
       fireEvent.click(analyticsButton);
       expect(handleSelectTab).toHaveBeenCalledWith('analytics');
+
+      const assistantButton = screen.getByRole('button', { name: /ai compensation assistant/i });
+      fireEvent.click(assistantButton);
+      expect(handleSelectTab).toHaveBeenCalledWith('assistant');
     });
   });
 

@@ -14,6 +14,7 @@ import type {
   DistributionAnalyticsResponse,
   ExchangeRate,
 } from '../types/analytics';
+import type { AssistantRequest, AssistantResponse } from '../types/assistant';
 
 export const apiService = {
   employee: {
@@ -136,6 +137,23 @@ export const apiService = {
       return apiClient.get<ExchangeRate[]>(
         '/api/analytics/exchange-rates',
         undefined,
+        { signal }
+      );
+    },
+  },
+
+  assistant: {
+    ask: (
+      question: string,
+      reportingCurrency = 'USD',
+      signal?: AbortSignal
+    ): Promise<AssistantResponse> => {
+      return apiClient.post<AssistantResponse>(
+        '/api/ask',
+        {
+          question,
+          reporting_currency: reportingCurrency,
+        } as AssistantRequest,
         { signal }
       );
     },

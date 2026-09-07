@@ -49,5 +49,10 @@ describe('ACME Enterprise Portal Shell', () => {
     fireEvent.click(analyticsNavBtn);
 
     expect(screen.getByRole('heading', { level: 2, name: 'Compensation Analytics' })).toBeInTheDocument();
+
+    const assistantNavBtn = screen.getByRole('button', { name: /ai compensation assistant/i });
+    fireEvent.click(assistantNavBtn);
+
+    expect(screen.getByRole('heading', { level: 2, name: 'AI Compensation Assistant' })).toBeInTheDocument();
   });
 });

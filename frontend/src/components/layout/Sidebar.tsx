@@ -11,8 +11,9 @@ import Divider from '@mui/material/Divider';
 import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
 import BarChartOutlinedIcon from '@mui/icons-material/BarChartOutlined';
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined';
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 
-export type NavigationTab = 'directory' | 'analytics';
+export type NavigationTab = 'directory' | 'analytics' | 'assistant';
 
 interface SidebarProps {
   currentTab: NavigationTab;
@@ -97,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
             </ListItemButton>
           </ListItem>
 
-          <ListItem disablePadding>
+          <ListItem disablePadding sx={{ mb: 0.5 }}>
             <ListItemButton
               selected={currentTab === 'analytics'}
               onClick={() => onSelectTab('analytics')}
@@ -121,6 +122,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
                 primary={
                   <Typography sx={{ fontSize: '0.875rem', fontWeight: currentTab === 'analytics' ? 600 : 500 }}>
                     Compensation Analytics
+                  </Typography>
+                }
+              />
+            </ListItemButton>
+          </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton
+              selected={currentTab === 'assistant'}
+              onClick={() => onSelectTab('assistant')}
+              sx={{
+                borderRadius: 1,
+                py: 1,
+                px: 1.5,
+                '&.Mui-selected': {
+                  backgroundColor: '#eff6ff',
+                  color: 'primary.main',
+                  '& .MuiListItemIcon-root': {
+                    color: 'primary.main',
+                  },
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 36, color: 'text.secondary' }}>
+                <AutoAwesomeOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary={
+                  <Typography sx={{ fontSize: '0.875rem', fontWeight: currentTab === 'assistant' ? 600 : 500 }}>
+                    AI Compensation Assistant
                   </Typography>
                 }
               />

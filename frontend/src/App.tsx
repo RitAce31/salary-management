@@ -9,6 +9,7 @@ import { AppLayout } from './components/layout/AppLayout';
 import type { NavigationTab } from './components/layout/Sidebar';
 import { EmployeeDirectory } from './pages/EmployeeDirectory';
 import { AnalyticsDashboard } from './pages/AnalyticsDashboard';
+import { CompensationAssistant } from './pages/CompensationAssistant';
 
 export function App() {
   const [currentTab, setCurrentTab] = useState<NavigationTab>('directory');
@@ -37,6 +38,12 @@ export function App() {
           subtitle: 'Executive payroll metrics, departmental comparisons, and normalized salary distributions.',
           actions: null,
         };
+      case 'assistant':
+        return {
+          title: 'AI Compensation Assistant',
+          subtitle: 'Query real-time headcount, compensation metrics, departmental benchmarks, and salary bands using natural language.',
+          actions: null,
+        };
     }
   };
 
@@ -59,6 +66,7 @@ export function App() {
           />
         )}
         {currentTab === 'analytics' && <AnalyticsDashboard />}
+        {currentTab === 'assistant' && <CompensationAssistant />}
       </AppLayout>
     </ThemeProvider>
   );
