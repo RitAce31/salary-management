@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { apiClient, buildUrl } from './apiClient';
 import type {
   Employee,
   EmployeeDetail,
@@ -173,7 +173,8 @@ export const apiService = {
       signal?: AbortSignal
     ): Promise<void> => {
       try {
-        const response = await fetch('/api/ask/stream', {
+        const streamUrl = buildUrl('/api/ask/stream');
+        const response = await fetch(streamUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
