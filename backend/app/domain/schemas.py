@@ -1,0 +1,81 @@
+from datetime import date, datetime
+from decimal import Decimal
+from typing import List, Optional
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+class SalaryBase(BaseModel):
+    amount: Decimal = Field(..., gt=0, description="Salary amount, must be greater than zero.")
+    effective_date: date = Field(..., description="Date when this salary became active.")
+    change_reason: Optional[str] = Field(None, max_length=100, description="Reason for salary change.")
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount_precision(cls, v: Decimal) -> Decimal:
+        return round(v, 2)
+
+
+class SalaryCreate(SalaryBase):
+    pass
+
+
+class SalaryResponse(SalaryBase):
+    id: int
+    employee_id: int
+    currency: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeBase(BaseModel):
+    employee_code: str = Field(..., min_length=1, max_length=32, description="Unique human-readable employee code.")
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    email: EmailStr = Field(..., description="Corporate email address.")
+    department: str = Field(..., min_length=1, max_length=100)
+    job_title: str = Field(..., min_length=1, max_length=100)
+    country: str = Field(..., min_length=1, max_length=100)
+    currency: str = Field(..., min_length=3, max_length=3, description="ISO 4217 currency code.")
+    hire_date: date = Field(..., description="Employment start date.")
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency_code(cls, v: str) -> str:
+        v = v.strip().upper()
+        if len(v) != 3 or not v.isalpha():
+            raise ValueError("Currency must be a 3-letter ISO code.")
+        return v
+
+    @field_validator("employee_code", "first_name", "last_name", "department", "job_title", "country")
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Field cannot be empty or whitespace only.")
+        return v
+
+
+class EmployeeCreate(EmployeeBase):
+    initial_salary: SalaryCreate
+
+
+class EmployeeResponse(EmployeeBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    current_salary: Optional[SalaryResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeDetailResponse(EmployeeResponse):
+    salary_history: List[SalaryResponse] = []
+
+
+class PaginatedEmployeesResponse(BaseModel):
+    items: List[EmployeeResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
