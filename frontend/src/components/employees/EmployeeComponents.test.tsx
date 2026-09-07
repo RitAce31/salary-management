@@ -113,6 +113,35 @@ describe('Employee Directory Components', () => {
       fireEvent.click(row);
       expect(handleClick).toHaveBeenCalledWith(mockEmployee);
     });
+
+    it('triggers onEdit and onDelete callbacks without row click', () => {
+      const handleClick = vi.fn();
+      const handleEdit = vi.fn();
+      const handleDelete = vi.fn();
+
+      render(
+        <table>
+          <tbody>
+            <EmployeeRow
+              employee={mockEmployee}
+              onClick={handleClick}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          </tbody>
+        </table>
+      );
+
+      const editBtn = screen.getByRole('button', { name: /edit john doe/i });
+      fireEvent.click(editBtn);
+      expect(handleEdit).toHaveBeenCalledWith(mockEmployee);
+      expect(handleClick).not.toHaveBeenCalled();
+
+      const deleteBtn = screen.getByRole('button', { name: /delete john doe/i });
+      fireEvent.click(deleteBtn);
+      expect(handleDelete).toHaveBeenCalledWith(mockEmployee);
+      expect(handleClick).not.toHaveBeenCalled();
+    });
   });
 
   describe('EmployeeTable', () => {

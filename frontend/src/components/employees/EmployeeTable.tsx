@@ -23,6 +23,8 @@ interface EmployeeTableProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   onSelectEmployee: (employee: Employee) => void;
+  onEditEmployee?: (employee: Employee) => void;
+  onDeleteEmployee?: (employee: Employee) => void;
 }
 
 export const EmployeeTable: React.FC<EmployeeTableProps> = ({
@@ -36,6 +38,8 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = ({
   onPageChange,
   onPageSizeChange,
   onSelectEmployee,
+  onEditEmployee,
+  onDeleteEmployee,
 }) => {
   const handleChangePage = (_: unknown, newPage: number) => {
     onPageChange(newPage + 1);
@@ -98,11 +102,18 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = ({
                   Hire Date
                 </TableSortLabel>
               </TableCell>
+              <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {employees.map((emp) => (
-              <EmployeeRow key={emp.id} employee={emp} onClick={onSelectEmployee} />
+              <EmployeeRow
+                key={emp.id}
+                employee={emp}
+                onClick={onSelectEmployee}
+                onEdit={onEditEmployee}
+                onDelete={onDeleteEmployee}
+              />
             ))}
           </TableBody>
         </Table>

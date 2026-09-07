@@ -13,17 +13,16 @@ import InputLabel from '@mui/material/InputLabel';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
-import Chip from '@mui/material/Chip';
 import CloseIcon from '@mui/icons-material/Close';
-import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 
-import type { EmployeeCreate } from '../../types/employee';
+import type { Employee, EmployeeUpdate } from '../../types/employee';
 import { apiService } from '../../services/api.service';
 
-interface AddEmployeeModalProps {
-  isOpen: boolean;
+interface EditEmployeeModalProps {
+  employee: Employee | null;
   onClose: () => void;
-  onEmployeeCreated: () => void;
+  onEmployeeUpdated: () => void;
 }
 
 const DEPARTMENTS = [
@@ -46,60 +45,53 @@ const COUNTRY_CURRENCY_MAP: Record<string, string> = {
   'Australia': 'AUD',
 };
 
-export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
-  isOpen,
+export const EditEmployeeModal: React.FC<EditEmployeeModalProps> = ({
+  employee,
   onClose,
-  onEmployeeCreated,
+  onEmployeeUpdated,
 }) => {
-  const [employeeCode, setEmployeeCode] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [department, setDepartment] = useState(DEPARTMENTS[0]);
   const [jobTitle, setJobTitle] = useState('');
   const [country, setCountry] = useState('United States');
-  const [hireDate, setHireDate] = useState(new Date().toISOString().split('T')[0]);
-  const [initialSalary, setInitialSalary] = useState('');
+  const [currency, setCurrency] = useState('USD');
+  const [hireDate, setHireDate] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [suggestedCode, setSuggestedCode] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      apiService.employee
-        .getNextCode()
-        .then((res) => {
-          if (res?.next_employee_code) {
-            setSuggestedCode(res.next_employee_code);
-            setEmployeeCode((prev) => (prev ? prev : res.next_employee_code));
-          }
-        })
-        .catch(() => {});
-    } else {
-      setEmployeeCode('');
-      setSuggestedCode(null);
+    if (employee) {
+      setFirstName(employee.first_name || '');
+      setLastName(employee.last_name || '');
+      setEmail(employee.email || '');
+      setDepartment(employee.department || DEPARTMENTS[0]);
+      setJobTitle(employee.job_title || '');
+      setCountry(employee.country || 'United States');
+      setCurrency(employee.currency || 'USD');
+      setHireDate(employee.hire_date || '');
       setError(null);
     }
-  }, [isOpen]);
+  }, [employee]);
 
-  if (!isOpen) return null;
+  if (!employee) return null;
 
-  const currency = COUNTRY_CURRENCY_MAP[country] || 'USD';
+  const handleCountryChange = (newCountry: string) => {
+    setCountry(newCountry);
+    const newCurrency = COUNTRY_CURRENCY_MAP[newCountry];
+    if (newCurrency) {
+      setCurrency(newCurrency);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const salaryNum = parseFloat(initialSalary);
-    if (isNaN(salaryNum) || salaryNum <= 0) {
-      setError('Please provide a valid positive initial salary amount.');
-      return;
-    }
-
     setSubmitting(true);
     setError(null);
 
-    const payload: EmployeeCreate = {
-      employee_code: employeeCode.trim(),
+    const payload: EmployeeUpdate = {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       email: email.trim(),
@@ -108,31 +100,26 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
       country,
       currency,
       hire_date: hireDate,
-      initial_salary: {
-        amount: salaryNum,
-        effective_date: hireDate,
-        change_reason: 'Starting Salary',
-      },
     };
 
     try {
-      await apiService.employee.create(payload);
-      onEmployeeCreated();
+      await apiService.employee.update(employee.id, payload);
+      onEmployeeUpdated();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create employee');
+      setError(err instanceof Error ? err.message : 'Failed to update employee profile');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={Boolean(employee)} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <PersonAddOutlinedIcon color="primary" fontSize="small" />
+          <EditOutlinedIcon color="primary" fontSize="small" />
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Register New Employee
+            Edit Employee Profile
           </Typography>
         </Box>
         <IconButton aria-label="close" onClick={onClose} size="small">
@@ -149,32 +136,13 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
           )}
 
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            <Box>
-              <TextField
-                label="Employee ID / Code"
-                size="small"
-                fullWidth
-                placeholder="e.g. EMP-10001"
-                value={employeeCode}
-                onChange={(e) => setEmployeeCode(e.target.value)}
-                required
-                helperText={
-                  suggestedCode ? (
-                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                      <span>Suggested:</span>
-                      <Chip
-                        label={suggestedCode}
-                        size="small"
-                        color="primary"
-                        variant={employeeCode === suggestedCode ? 'filled' : 'outlined'}
-                        onClick={() => setEmployeeCode(suggestedCode)}
-                        sx={{ height: 20, fontSize: '0.72rem', cursor: 'pointer', fontWeight: 600 }}
-                      />
-                    </Box>
-                  ) : undefined
-                }
-              />
-            </Box>
+            <TextField
+              label="Employee ID / Code"
+              size="small"
+              value={employee.employee_code}
+              disabled
+              helperText="Employee ID is immutable"
+            />
 
             <TextField
               label="Corporate Email"
@@ -202,17 +170,17 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
               required
             />
 
-            <FormControl size="small">
-              <InputLabel id="add-dept-label">Department</InputLabel>
+            <FormControl size="small" fullWidth>
+              <InputLabel id="edit-dept-label">Department</InputLabel>
               <Select
-                labelId="add-dept-label"
-                value={department}
+                labelId="edit-dept-label"
                 label="Department"
+                value={department}
                 onChange={(e) => setDepartment(e.target.value)}
               >
-                {DEPARTMENTS.map((d) => (
-                  <MenuItem key={d} value={d}>
-                    {d}
+                {DEPARTMENTS.map((dept) => (
+                  <MenuItem key={dept} value={dept}>
+                    {dept}
                   </MenuItem>
                 ))}
               </Select>
@@ -221,62 +189,56 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
             <TextField
               label="Job Title"
               size="small"
-              placeholder="e.g. Senior Software Engineer"
               value={jobTitle}
               onChange={(e) => setJobTitle(e.target.value)}
               required
             />
 
-            <FormControl size="small">
-              <InputLabel id="add-country-label">Country</InputLabel>
+            <FormControl size="small" fullWidth>
+              <InputLabel id="edit-country-label">Country</InputLabel>
               <Select
-                labelId="add-country-label"
-                value={country}
+                labelId="edit-country-label"
                 label="Country"
-                onChange={(e) => setCountry(e.target.value)}
+                value={country}
+                onChange={(e) => handleCountryChange(e.target.value)}
               >
                 {Object.keys(COUNTRY_CURRENCY_MAP).map((c) => (
                   <MenuItem key={c} value={c}>
-                    {c} ({COUNTRY_CURRENCY_MAP[c]})
+                    {c}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
 
             <TextField
-              label="Hire Date"
-              type="date"
+              label="Currency"
               size="small"
-              value={hireDate}
-              onChange={(e) => setHireDate(e.target.value)}
-              required
-              slotProps={{ inputLabel: { shrink: true } }}
+              value={currency}
+              disabled
+              helperText="Auto-assigned based on country"
             />
 
             <Box sx={{ gridColumn: 'span 2' }}>
               <TextField
-                fullWidth
-                label={`Starting Contract Salary (${currency})`}
-                type="number"
+                label="Hire Date"
+                type="date"
                 size="small"
-                value={initialSalary}
-                onChange={(e) => setInitialSalary(e.target.value)}
+                fullWidth
+                value={hireDate}
+                onChange={(e) => setHireDate(e.target.value)}
                 required
-                slotProps={{
-                  htmlInput: { min: 1, step: '0.01' },
-                }}
-                helperText="Initial salary will be locked as the contract starting base."
+                slotProps={{ inputLabel: { shrink: true } }}
               />
             </Box>
           </Box>
         </DialogContent>
 
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={onClose} variant="outlined" size="small" disabled={submitting}>
+        <DialogActions sx={{ p: 2, px: 3 }}>
+          <Button onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" variant="contained" size="small" disabled={submitting}>
-            {submitting ? 'Registering...' : 'Register Employee'}
+          <Button type="submit" variant="contained" disabled={submitting}>
+            {submitting ? 'Saving...' : 'Save Changes'}
           </Button>
         </DialogActions>
       </Box>

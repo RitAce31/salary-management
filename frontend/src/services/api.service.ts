@@ -3,6 +3,8 @@ import type {
   Employee,
   EmployeeDetail,
   EmployeeCreate,
+  EmployeeUpdate,
+  NextEmployeeCodeResponse,
   PaginatedEmployeesResponse,
   EmployeeFilterParams,
 } from '../types/employee';
@@ -49,8 +51,20 @@ export const apiService = {
       return apiClient.get<EmployeeDetail>(`/api/employees/${id}`, undefined, { signal });
     },
 
+    getNextCode: (signal?: AbortSignal): Promise<NextEmployeeCodeResponse> => {
+      return apiClient.get<NextEmployeeCodeResponse>('/api/employees/next-code', undefined, { signal });
+    },
+
     create: (data: EmployeeCreate, signal?: AbortSignal): Promise<Employee> => {
       return apiClient.post<Employee>('/api/employees', data, { signal });
+    },
+
+    update: (id: number, data: EmployeeUpdate, signal?: AbortSignal): Promise<Employee> => {
+      return apiClient.put<Employee>(`/api/employees/${id}`, data, { signal });
+    },
+
+    delete: (id: number, signal?: AbortSignal): Promise<void> => {
+      return apiClient.delete<void>(`/api/employees/${id}`, { signal });
     },
   },
 

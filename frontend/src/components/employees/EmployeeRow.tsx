@@ -4,15 +4,26 @@ import TableCell from '@mui/material/TableCell';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
 import type { Employee } from '../../types/employee';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 
 interface EmployeeRowProps {
   employee: Employee;
   onClick: (employee: Employee) => void;
+  onEdit?: (employee: Employee) => void;
+  onDelete?: (employee: Employee) => void;
 }
 
-export const EmployeeRow: React.FC<EmployeeRowProps> = ({ employee, onClick }) => {
+export const EmployeeRow: React.FC<EmployeeRowProps> = ({
+  employee,
+  onClick,
+  onEdit,
+  onDelete,
+}) => {
   const currentSalary = employee.current_salary;
 
   return (
@@ -63,6 +74,38 @@ export const EmployeeRow: React.FC<EmployeeRowProps> = ({ employee, onClick }) =
       </TableCell>
       <TableCell sx={{ fontVariantNumeric: 'tabular-nums', color: 'text.secondary', fontSize: '0.8rem' }}>
         {formatDate(employee.hire_date)}
+      </TableCell>
+      <TableCell align="right" sx={{ whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+        {onEdit && (
+          <Tooltip title="Edit Employee Profile">
+            <IconButton
+              size="small"
+              aria-label={`edit ${employee.first_name} ${employee.last_name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(employee);
+              }}
+              sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+            >
+              <EditOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+        {onDelete && (
+          <Tooltip title="Delete Employee">
+            <IconButton
+              size="small"
+              aria-label={`delete ${employee.first_name} ${employee.last_name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(employee);
+              }}
+              sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+            >
+              <DeleteOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
       </TableCell>
     </TableRow>
   );

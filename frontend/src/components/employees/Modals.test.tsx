@@ -2,6 +2,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SalaryHistoryModal } from './SalaryHistoryModal';
 import { AddEmployeeModal } from './AddEmployeeModal';
+import { EditEmployeeModal } from './EditEmployeeModal';
+import { DeleteEmployeeDialog } from './DeleteEmployeeDialog';
 import { apiService } from '../../services/api.service';
 import type { Employee } from '../../types/employee';
 import type { Salary } from '../../types/salary';
@@ -144,6 +146,89 @@ describe('Employee Modals', () => {
       await waitFor(() => {
         expect(apiService.employee.create).toHaveBeenCalled();
         expect(handleCreated).toHaveBeenCalledTimes(1);
+        expect(handleClose).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  describe('EditEmployeeModal', () => {
+    it('does not render when employee is null', () => {
+      const { container } = render(
+        <EditEmployeeModal employee={null} onClose={vi.fn()} onEmployeeUpdated={vi.fn()} />
+      );
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it('renders prefilled form and submits updated profile', async () => {
+      const handleUpdated = vi.fn();
+      const handleClose = vi.fn();
+
+      vi.spyOn(apiService.employee, 'update').mockResolvedValue({
+        ...mockEmployee,
+        job_title: 'Principal Product Manager',
+      });
+
+      render(
+        <EditEmployeeModal
+          employee={mockEmployee}
+          onClose={handleClose}
+          onEmployeeUpdated={handleUpdated}
+        />
+      );
+
+      expect(screen.getByText('Edit Employee Profile')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Jane')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Smith')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Lead Product Manager')).toBeInTheDocument();
+
+      const jobTitleInput = screen.getByDisplayValue('Lead Product Manager');
+      fireEvent.change(jobTitleInput, { target: { value: 'Principal Product Manager' } });
+
+      const saveBtn = screen.getByRole('button', { name: /save changes/i });
+      fireEvent.click(saveBtn);
+
+      await waitFor(() => {
+        expect(apiService.employee.update).toHaveBeenCalledWith(
+          1,
+          expect.objectContaining({ job_title: 'Principal Product Manager' })
+        );
+        expect(handleUpdated).toHaveBeenCalledTimes(1);
+        expect(handleClose).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  describe('DeleteEmployeeDialog', () => {
+    it('does not render when employee is null', () => {
+      const { container } = render(
+        <DeleteEmployeeDialog employee={null} onClose={vi.fn()} onEmployeeDeleted={vi.fn()} />
+      );
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it('renders confirmation warning and calls delete on confirm', async () => {
+      const handleDeleted = vi.fn();
+      const handleClose = vi.fn();
+
+      vi.spyOn(apiService.employee, 'delete').mockResolvedValue();
+
+      render(
+        <DeleteEmployeeDialog
+          employee={mockEmployee}
+          onClose={handleClose}
+          onEmployeeDeleted={handleDeleted}
+        />
+      );
+
+      expect(screen.getByRole('heading', { name: /delete employee record/i })).toBeInTheDocument();
+      expect(screen.getByText(/Are you sure you want to delete/i)).toBeInTheDocument();
+
+      const deleteBtn = screen.getByRole('button', { name: /delete employee/i });
+      fireEvent.click(deleteBtn);
+
+      await waitFor(() => {
+        expect(apiService.employee.delete).toHaveBeenCalledWith(1);
+        expect(handleDeleted).toHaveBeenCalledTimes(1);
         expect(handleClose).toHaveBeenCalledTimes(1);
       });
     });

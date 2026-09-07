@@ -41,6 +41,21 @@ export interface EmployeeCreate {
   initial_salary: SalaryCreate;
 }
 
+export interface EmployeeUpdate {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  department?: string;
+  job_title?: string;
+  country?: string;
+  currency?: string;
+  hire_date?: string;
+}
+
+export interface NextEmployeeCodeResponse {
+  next_employee_code: string;
+}
+
 export interface EmployeeFilterParams {
   page?: number;
   page_size?: number;

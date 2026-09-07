@@ -6,6 +6,8 @@ import { EmployeeFilters } from '../components/employees/EmployeeFilters';
 import { EmployeeTable } from '../components/employees/EmployeeTable';
 import { SalaryHistoryModal } from '../components/employees/SalaryHistoryModal';
 import { AddEmployeeModal } from '../components/employees/AddEmployeeModal';
+import { EditEmployeeModal } from '../components/employees/EditEmployeeModal';
+import { DeleteEmployeeDialog } from '../components/employees/DeleteEmployeeDialog';
 import { LoadingState } from '../components/common/LoadingState';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -35,6 +37,8 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
@@ -137,6 +141,8 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
             setCurrentPage(1);
           }}
           onSelectEmployee={setSelectedEmployee}
+          onEditEmployee={setEditingEmployee}
+          onDeleteEmployee={setDeletingEmployee}
         />
       )}
 
@@ -144,6 +150,18 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
         employee={selectedEmployee}
         onClose={() => setSelectedEmployee(null)}
         onSalaryAdded={fetchEmployees}
+      />
+
+      <EditEmployeeModal
+        employee={editingEmployee}
+        onClose={() => setEditingEmployee(null)}
+        onEmployeeUpdated={fetchEmployees}
+      />
+
+      <DeleteEmployeeDialog
+        employee={deletingEmployee}
+        onClose={() => setDeletingEmployee(null)}
+        onEmployeeDeleted={fetchEmployees}
       />
 
       <AddEmployeeModal
