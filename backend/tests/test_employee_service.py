@@ -141,7 +141,7 @@ def test_list_employees_pagination_and_current_salaries(db):
 
     # 1. Test pagination
     employees, total, current_salaries = list_employees(
-        db, page=1, page_size=2, department="Engineering"
+        db, page=1, page_size=2, search="Worker", department="Engineering"
     )
     assert total == 2
     assert len(employees) == 2
@@ -153,3 +153,4 @@ def test_list_employees_pagination_and_current_salaries(db):
     )
     assert total_search == 1
     assert employees_search[0].first_name == "Worker1"
+

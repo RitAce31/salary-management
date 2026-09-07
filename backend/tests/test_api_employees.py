@@ -76,7 +76,7 @@ def test_get_employees_paginated(client):
         )
 
     # List all
-    response = client.get("/api/employees?page=1&page_size=2")
+    response = client.get("/api/employees?page=1&page_size=2&search=EMP-LIST")
     assert response.status_code == 200
     data = response.json()
     assert data["page"] == 1
@@ -86,11 +86,12 @@ def test_get_employees_paginated(client):
     assert data["items"][0]["current_salary"] is not None
 
     # Filter by department
-    filtered_resp = client.get("/api/employees?department=Sales")
+    filtered_resp = client.get("/api/employees?department=Sales&search=EMP-LIST")
     assert filtered_resp.status_code == 200
     filtered_data = filtered_resp.json()
     assert filtered_data["total"] == 1
     assert filtered_data["items"][0]["department"] == "Sales"
+
 
 
 def test_get_employee_detail_with_history(client):

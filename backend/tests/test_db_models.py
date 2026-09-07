@@ -101,9 +101,9 @@ def test_salary_positive_amount_check_constraint(db):
 def test_exchange_rate_model(db):
     """Verify exchange rate storage and unique constraint per currency pair & reference date."""
     rate = ExchangeRate(
-        from_currency="INR",
+        from_currency="JPY",
         to_currency="USD",
-        rate=Decimal("0.011980"),
+        rate=Decimal("0.006500"),
         reference_date=date(2026, 1, 1),
     )
     db.add(rate)
@@ -112,11 +112,12 @@ def test_exchange_rate_model(db):
     assert rate.id is not None
 
     duplicate_rate = ExchangeRate(
-        from_currency="INR",
+        from_currency="JPY",
         to_currency="USD",
-        rate=Decimal("0.012000"),
+        rate=Decimal("0.006700"),
         reference_date=date(2026, 1, 1),
     )
     db.add(duplicate_rate)
     with pytest.raises(IntegrityError):
         db.flush()
+
