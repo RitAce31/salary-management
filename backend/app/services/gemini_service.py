@@ -263,7 +263,7 @@ class GeminiToolService:
         }
 
         try:
-            with httpx.Client(timeout=20.0) as client:
+            with httpx.Client(timeout=httpx.Timeout(90.0, connect=15.0, read=90.0)) as client:
                 response = client.post(url, json=payload)
 
             if response.status_code != 200:
