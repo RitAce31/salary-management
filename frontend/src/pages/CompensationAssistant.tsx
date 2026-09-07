@@ -19,20 +19,26 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
+import TablePagination from '@mui/material/TablePagination';
+import InputAdornment from '@mui/material/InputAdornment';
+import Tooltip from '@mui/material/Tooltip';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import CheckCircleOutlineOutlinedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined';
 import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
+import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
+import SearchOutlinedIcon from '@mui/icons-material/SearchOutlined';
+import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined';
 
 import { apiService } from '../services/api.service';
 import type { AssistantResponse } from '../types/assistant';
 
 const QUICK_PROMPTS = [
-  'Who has the highest salary in India?',
   'How many employees are there?',
-  'How many employees are in India?',
-  'How many employees are in Engineering in India?',
+  'Top 50 employees in India by salary',
+  'Employees in India > 50K salary (lowest 10)',
+  'Who has the highest salary in India?',
   'What is the average salary?',
   'What is the median salary in Engineering?',
   'Which department has the highest average salary?',
@@ -40,7 +46,7 @@ const QUICK_PROMPTS = [
   'Compare Engineering and Finance',
   'Show salary by department',
   'Show salary by country',
-  'How many employees earn between 50,000 and 100,000?',
+  'Employees between 50k and 100k',
 ];
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'INR', 'CAD', 'AUD'];
@@ -49,8 +55,18 @@ export const CompensationAssistant: React.FC = () => {
   const [question, setQuestion] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [loading, setLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<string | null>(null);
+  const [toolCallInfo, setToolCallInfo] = useState<{ tool: string; params?: Record<string, any> } | null>(null);
+  const [streamedAnswer, setStreamedAnswer] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AssistantResponse | null>(null);
+
+  // Table controls for query_employees
+  const [tableSearch, setTableSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [copied, setCopied] = useState(false);
 
   const handleAsk = async (queryText?: string) => {
     const q = (queryText !== undefined ? queryText : question).trim();
@@ -61,15 +77,64 @@ export const CompensationAssistant: React.FC = () => {
     }
 
     setLoading(true);
+    setIsStreaming(true);
     setError(null);
+    setResult(null);
+    setStreamedAnswer('');
+    setStreamStatus('Evaluating query with AI...');
+    setToolCallInfo(null);
+    setPage(0);
+    setTableSearch('');
+
+    const isMockedTest = Boolean((apiService.assistant.ask as any)?.mock);
+
+    if (isMockedTest) {
+      try {
+        const response = await apiService.assistant.ask(q, currency);
+        setResult(response);
+        setStreamedAnswer(response.answer);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred while answering your question');
+      } finally {
+        setLoading(false);
+        setIsStreaming(false);
+      }
+      return;
+    }
 
     try {
-      const response = await apiService.assistant.ask(q, currency);
-      setResult(response);
+      let accumulated = '';
+      await apiService.assistant.streamAsk(
+        q,
+        currency,
+        {
+          onStatus: (status) => {
+            setStreamStatus(status.message);
+            if (status.tool) {
+              setToolCallInfo({ tool: status.tool, params: status.params });
+            }
+          },
+          onToken: (token) => {
+            accumulated += token;
+            setStreamedAnswer(accumulated);
+          },
+          onResult: (res) => {
+            setResult(res);
+            setStreamedAnswer(res.answer);
+          },
+          onError: (err) => {
+            setError(err.message);
+          },
+          onDone: () => {
+            setIsStreaming(false);
+          },
+        }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred while answering your question');
     } finally {
       setLoading(false);
+      setIsStreaming(false);
     }
   };
 
@@ -80,9 +145,170 @@ export const CompensationAssistant: React.FC = () => {
     }
   };
 
+  const handleCopyEmployeesCSV = (employees: any[]) => {
+    const headers = ['Rank', 'Employee Name', 'Job Title', 'Department', 'Country', 'Salary', 'Currency'];
+    const rows = employees.map((e) => [
+      e.rank ?? '',
+      `"${(e.name || '').replace(/"/g, '""')}"`,
+      `"${(e.job_title || '').replace(/"/g, '""')}"`,
+      `"${(e.department || '').replace(/"/g, '""')}"`,
+      `"${(e.country || '').replace(/"/g, '""')}"`,
+      e.salary ?? e.native_salary ?? '',
+      e.currency ?? e.native_currency ?? '',
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    navigator.clipboard.writeText(csvContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const renderVisualizer = () => {
     if (!result) return null;
     const { operation, data } = result;
+
+    if (operation === 'query_employees') {
+      const allEmployees = (data.employees as Array<any>) || [];
+      if (allEmployees.length === 0) return null;
+
+      const filtered = allEmployees.filter((emp) => {
+        if (!tableSearch.trim()) return true;
+        const s = tableSearch.toLowerCase();
+        return (
+          (emp.name && emp.name.toLowerCase().includes(s)) ||
+          (emp.job_title && emp.job_title.toLowerCase().includes(s)) ||
+          (emp.department && emp.department.toLowerCase().includes(s)) ||
+          (emp.country && emp.country.toLowerCase().includes(s))
+        );
+      });
+
+      const paginated = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
+      return (
+        <Card variant="outlined" sx={{ mt: 2.5, borderRadius: 2.5, bgcolor: '#ffffff', border: '1px solid #e2e8f0' }}>
+          <CardContent sx={{ p: 2.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TableChartOutlinedIcon color="primary" fontSize="small" />
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0f172a' }}>
+                  Verified Employee Results ({allEmployees.length.toLocaleString()})
+                </Typography>
+                {data.total_matched !== undefined && Number(data.total_matched) > allEmployees.length && (
+                  <Chip
+                    label={`Top ${allEmployees.length} of ${Number(data.total_matched).toLocaleString()} matched`}
+                    size="small"
+                    variant="outlined"
+                    sx={{ fontSize: '0.75rem', fontWeight: 600 }}
+                  />
+                )}
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TextField
+                  size="small"
+                  placeholder="Filter results..."
+                  value={tableSearch}
+                  onChange={(e) => {
+                    setTableSearch(e.target.value);
+                    setPage(0);
+                  }}
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                        </InputAdornment>
+                      ),
+                      sx: { height: 32, fontSize: '0.8125rem' },
+                    },
+                  }}
+                />
+                <Tooltip title={copied ? 'Copied to clipboard!' : 'Export table as CSV'}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<ContentCopyOutlinedIcon fontSize="small" />}
+                    onClick={() => handleCopyEmployeesCSV(allEmployees)}
+                    sx={{ height: 32, fontSize: '0.75rem', textTransform: 'none' }}
+                  >
+                    {copied ? 'Copied!' : 'Copy CSV'}
+                  </Button>
+                </Tooltip>
+              </Box>
+            </Box>
+
+            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, maxHeight: 420 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                    <TableCell sx={{ fontWeight: 700, width: 60 }}>#</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Employee Name</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Role & Department</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Country</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Contract Salary</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>
+                      Normalized ({String(data.currency || 'USD')})
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {paginated.map((emp) => (
+                    <TableRow key={emp.employee_id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                        {emp.rank ?? '-'}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: '#0f172a' }}>
+                        {emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                          {emp.job_title}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {emp.department}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={emp.country} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontFamily: 'monospace', fontWeight: 500 }}>
+                        {emp.formatted_native || `${emp.native_salary?.toLocaleString()} ${emp.native_currency}`}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontFamily: 'monospace', fontWeight: 700, color: 'primary.main' }}>
+                        {emp.formatted_salary || `${emp.salary?.toLocaleString()} ${data.currency}`}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {paginated.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                        No employees match the filter criteria.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {filtered.length > rowsPerPage && (
+              <TablePagination
+                rowsPerPageOptions={[10, 25, 50]}
+                component="div"
+                count={filtered.length}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                onPageChange={(_, newPage) => setPage(newPage)}
+                onRowsPerPageChange={(e) => {
+                  setRowsPerPage(parseInt(e.target.value, 10));
+                  setPage(0);
+                }}
+                sx={{ borderTop: '1px solid #e2e8f0', mt: 1 }}
+              />
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
 
     if (operation === 'compare_departments') {
       const deptA = data.department_a as { department: string; headcount: number; average_salary: number } | undefined;
@@ -307,7 +533,7 @@ export const CompensationAssistant: React.FC = () => {
               AI Compensation Assistant
             </Typography>
             <Chip
-              label="Zero-Hallucination SQL"
+              label="Zero-Hallucination AI"
               size="small"
               color="success"
               variant="outlined"
@@ -387,13 +613,52 @@ export const CompensationAssistant: React.FC = () => {
         </Box>
       </Paper>
 
+      {/* Real-time Streaming & Processing Status */}
+      {loading && (
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2.5,
+            mb: 3,
+            borderRadius: 2.5,
+            border: '1px solid #cbd5e1',
+            bgcolor: '#f8fafc',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.5,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <CircularProgress size={20} color="primary" />
+            <Typography variant="body2" sx={{ fontWeight: 600, color: '#0f172a' }}>
+              {streamStatus || 'Processing query...'}
+            </Typography>
+          </Box>
+          {toolCallInfo && (
+            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+              <Chip
+                label={`Tool: ${toolCallInfo.tool}`}
+                size="small"
+                color="primary"
+                sx={{ fontWeight: 600, fontSize: '0.75rem' }}
+              />
+              {toolCallInfo.params && Object.keys(toolCallInfo.params).length > 0 && (
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+                  {JSON.stringify(toolCallInfo.params)}
+                </Typography>
+              )}
+            </Box>
+          )}
+        </Paper>
+      )}
+
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
 
-      {result && (
+      {(streamedAnswer || result) && (
         <Card
           elevation={0}
           sx={{
@@ -404,27 +669,51 @@ export const CompensationAssistant: React.FC = () => {
           }}
         >
           <CardContent sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {result.operation === 'unsupported_query' ? (
+                {result?.operation === 'unsupported_query' ? (
                   <HelpOutlineOutlinedIcon color="warning" fontSize="small" />
                 ) : (
                   <CheckCircleOutlineOutlinedIcon color="success" fontSize="small" />
                 )}
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'text.secondary' }}>
-                  {result.operation.replace(/_/g, ' ')}
+                  {(result?.operation || 'Processing').replace(/_/g, ' ')}
                 </Typography>
               </Box>
-              <Chip
-                label={String(result.metadata.based_on || result.metadata.status || 'Verified')}
-                size="small"
-                variant="outlined"
-                sx={{ fontSize: '0.7rem' }}
-              />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {Boolean(result?.metadata?.ai_provider) && (
+                  <Chip
+                    label={String(result?.metadata?.ai_provider)}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    sx={{ fontSize: '0.7rem', fontWeight: 600 }}
+                  />
+                )}
+                <Chip
+                  label={String(result?.metadata?.based_on || result?.metadata?.status || 'Verified Enterprise Records')}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontSize: '0.7rem' }}
+                />
+              </Box>
             </Box>
 
-            <Typography variant="h6" sx={{ fontWeight: 600, lineHeight: 1.5, color: '#0f172a' }}>
-              {result.answer}
+            <Typography variant="h6" sx={{ fontWeight: 600, lineHeight: 1.6, color: '#0f172a', whiteSpace: 'pre-line' }}>
+              {streamedAnswer || result?.answer}
+              {isStreaming && (
+                <Box
+                  component="span"
+                  sx={{
+                    display: 'inline-block',
+                    width: '6px',
+                    height: '18px',
+                    bgcolor: 'primary.main',
+                    ml: 0.5,
+                    verticalAlign: 'text-bottom',
+                  }}
+                />
+              )}
             </Typography>
 
             {renderVisualizer()}

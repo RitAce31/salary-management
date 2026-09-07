@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/acme_salary"
     CORS_ORIGINS: List[str] = ["http://localhost:5173"]
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-3.6-flash"
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

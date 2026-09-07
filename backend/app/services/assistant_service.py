@@ -4,29 +4,11 @@ from typing import Optional, Dict, Any, Tuple, List
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.domain.assistant_schemas import AssistantResponse
 from app.services.analytics_service import AnalyticsService
+from app.services.gemini_service import GeminiToolService
 
-
-DEPARTMENTS = [
-    "Engineering",
-    "Product",
-    "Sales",
-    "Marketing",
-    "Finance",
-    "HR",
-    "Operations",
-    "Legal",
-]
-
-COUNTRIES = [
-    "United States",
-    "India",
-    "Germany",
-    "United Kingdom",
-    "Canada",
-    "Australia",
-]
 
 CURRENCY_SYMBOLS = {
     "USD": "$",
@@ -50,9 +32,24 @@ class CompensationAssistantService:
         q = question.strip()
         currency = cls._extract_currency(q, reporting_currency)
 
-        intent, params = cls._parse_intent(q)
-        answer, operation, data, metadata = cls._execute_intent(db, intent, params, currency, q)
+        tool_result = GeminiToolService.call_tool(q)
+        if tool_result is not None:
+            intent, params = tool_result
+            answer, operation, data, metadata = cls._execute_intent(db, intent, params, currency, q)
+            metadata["ai_provider"] = "AI Verified"
+            metadata["based_on"] = "Verified enterprise database records"
+            return AssistantResponse(
+                answer=answer,
+                operation=operation,
+                data=data,
+                metadata=metadata,
+            )
 
+        answer, operation, data, metadata = cls._execute_intent(
+            db, "unsupported", {}, currency, q
+        )
+        metadata["ai_provider"] = "AI Assistant"
+        metadata["based_on"] = "Enterprise AI Intelligence"
         return AssistantResponse(
             answer=answer,
             operation=operation,
@@ -78,179 +75,6 @@ class CompensationAssistantService:
         return default.strip().upper() if default else "USD"
 
     @classmethod
-    def _extract_department(cls, text_str: str) -> Optional[str]:
-        t = text_str.lower()
-        if re.search(r"\b(engineer|engineers|engineering|eng|software)\b", t):
-            return "Engineering"
-        if re.search(r"\b(product|product management|pm)\b", t):
-            return "Product"
-        if re.search(r"\b(sales|account executive)\b", t):
-            return "Sales"
-        if re.search(r"\b(marketing|mktg)\b", t):
-            return "Marketing"
-        if re.search(r"\b(finance|accounting)\b", t):
-            return "Finance"
-        if re.search(r"\b(hr|human resources|talent)\b", t):
-            return "HR"
-        if re.search(r"\b(operation|operations|ops)\b", t):
-            return "Operations"
-        if re.search(r"\b(legal|compliance)\b", t):
-            return "Legal"
-        return None
-
-    @classmethod
-    def _extract_country(cls, text_str: str) -> Optional[str]:
-        t = text_str.lower()
-        if re.search(r"\b(india|ind)\b", t):
-            return "India"
-        if re.search(r"\b(united states|usa?|america|states)\b", t):
-            return "United States"
-        if re.search(r"\b(germany|de|deutschland)\b", t):
-            return "Germany"
-        if re.search(r"\b(united kingdom|uk|britain|england)\b", t):
-            return "United Kingdom"
-        if re.search(r"\b(canada)\b", t):
-            return "Canada"
-        if re.search(r"\b(australia|aus)\b", t):
-            return "Australia"
-        return None
-
-    @classmethod
-    def _extract_multiple_departments(cls, text_str: str) -> List[str]:
-        found: List[Tuple[int, str]] = []
-        t = text_str.lower()
-        for d in DEPARTMENTS:
-            pattern = rf"\b{re.escape(d.lower())}\b"
-            if d == "HR":
-                pattern = r"\b(hr|human resources)\b"
-            elif d == "Engineering":
-                pattern = r"\b(engineering|engineers|eng)\b"
-            m = re.search(pattern, t)
-            if m:
-                found.append((m.start(), d))
-        found.sort(key=lambda x: x[0])
-        return [d for _, d in found]
-
-    @classmethod
-    def _extract_multiple_countries(cls, text_str: str) -> List[str]:
-        found: List[Tuple[int, str]] = []
-        t = text_str.lower()
-        for c in COUNTRIES:
-            if c == "United States":
-                pattern = r"\b(united states|us|usa|america)\b"
-            elif c == "United Kingdom":
-                pattern = r"\b(united kingdom|uk|britain)\b"
-            else:
-                pattern = rf"\b{re.escape(c.lower())}\b"
-            m = re.search(pattern, t)
-            if m:
-                found.append((m.start(), c))
-        found.sort(key=lambda x: x[0])
-        return [c for _, c in found]
-
-    @classmethod
-    def _parse_intent(cls, question: str) -> Tuple[str, Dict[str, Any]]:
-        q = question.lower()
-
-        compare_match = re.search(r"\bcompare\b", q)
-        if compare_match:
-            depts = cls._extract_multiple_departments(question)
-            if len(depts) >= 2:
-                return "compare_departments", {"department_a": depts[0], "department_b": depts[1]}
-            countries = cls._extract_multiple_countries(question)
-            if len(countries) >= 2:
-                return "compare_countries", {"country_a": countries[0], "country_b": countries[1]}
-
-        range_between = re.search(
-            r"between\s+[\$€£₹]?\s*([0-9,]+(?:k)?)\s+and\s+[\$€£₹]?\s*([0-9,]+(?:k)?)",
-            q,
-        )
-        if range_between:
-            min_val = cls._parse_number(range_between.group(1))
-            max_val = cls._parse_number(range_between.group(2))
-            return "get_salary_range_count", {"min_salary": min_val, "max_salary": max_val}
-
-        range_more = re.search(
-            r"(more than|greater than|above|over)\s+[\$€£₹]?\s*([0-9,]+(?:k)?)",
-            q,
-        )
-        if range_more:
-            min_val = cls._parse_number(range_more.group(2))
-            return "get_salary_range_count", {"min_salary": min_val, "max_salary": None}
-
-        range_less = re.search(
-            r"(less than|under|below)\s+[\$€£₹]?\s*([0-9,]+(?:k)?)",
-            q,
-        )
-        if range_less:
-            max_val = cls._parse_number(range_less.group(2))
-            return "get_salary_range_count", {"min_salary": None, "max_salary": max_val}
-
-        if re.search(r"(show|list|breakdown|view).*(salary|comp).*by\s+department", q) or re.search(r"salary\s+by\s+department", q):
-            return "get_salary_by_department", {}
-
-        if re.search(r"(show|list|breakdown|view).*(salary|comp).*by\s+country", q) or re.search(r"salary\s+by\s+country", q):
-            return "get_salary_by_country", {}
-
-        if re.search(r"(salary distribution|distribution of salary|distribution tiers|salary brackets)", q):
-            return "get_salary_distribution", {}
-
-        is_highest = bool(re.search(r"\b(highest|max|maximum|top|most|best paid)\b", q))
-        is_lowest = bool(re.search(r"\b(lowest|min|minimum|bottom|least|worst paid)\b", q))
-
-        if (is_highest or is_lowest) and re.search(r"\bdepartment\b", q) and not cls._extract_department(question):
-            return "get_highest_lowest_department", {"order": "highest" if is_highest else "lowest"}
-
-        if (is_highest or is_lowest) and re.search(r"\bcountry\b", q) and not cls._extract_country(question):
-            return "get_highest_lowest_country", {"order": "highest" if is_highest else "lowest"}
-
-        is_salary = bool(re.search(r"\b(salary|salaries|pay|compensation|comp|earn|earning|payroll)\b", q))
-        is_count = bool(
-            re.search(r"\b(how many|count|headcount|number of employees|total employees|total people)\b", q)
-            or (re.search(r"\bemployees\b", q) and not re.search(r"\b(salary|pay|earn|compensation|cost|spend)\b", q))
-        )
-
-        is_who = bool(
-            re.search(r"\b(who|which person|which employee|name of the employee|who is|who has|who earns|who gets)\b", q)
-        )
-        if is_who and (is_highest or is_lowest or is_salary or re.search(r"\b(earn|earns|paid|makes)\b", q)):
-            dept = cls._extract_department(question)
-            country = cls._extract_country(question)
-            order = "lowest" if is_lowest else "highest"
-            return "get_top_earning_employee", {"order": order, "department": dept, "country": country}
-
-        if is_count:
-            dept = cls._extract_department(question)
-            country = cls._extract_country(question)
-            return "get_employee_count", {"department": dept, "country": country}
-
-        if is_salary or is_highest or is_lowest:
-            dept = cls._extract_department(question)
-            country = cls._extract_country(question)
-            metric = "average"
-            if is_highest:
-                metric = "highest"
-            elif is_lowest:
-                metric = "lowest"
-            elif re.search(r"\b(median|50th percentile)\b", q):
-                metric = "median"
-            return "get_salary_metrics", {"metric": metric, "department": dept, "country": country}
-
-        dept = cls._extract_department(question)
-        country = cls._extract_country(question)
-        if dept or country:
-            return "get_employee_count", {"department": dept, "country": country}
-
-        return "unsupported", {}
-
-    @classmethod
-    def _parse_number(cls, num_str: str) -> float:
-        cleaned = num_str.strip().lower().replace(",", "")
-        if cleaned.endswith("k"):
-            return float(cleaned[:-1]) * 1000
-        return float(cleaned)
-
-    @classmethod
     def _format_money(cls, amount: float | Decimal, currency: str) -> str:
         symbol = CURRENCY_SYMBOLS.get(currency.upper(), f"{currency.upper()} ")
         val = float(amount)
@@ -265,6 +89,105 @@ class CompensationAssistantService:
         currency: str,
         original_question: str,
     ) -> Tuple[str, str, Dict[str, Any], Dict[str, str]]:
+        if intent == "ai_text_response":
+            answer = str(params.get("text") or "").strip()
+            data = {"response_type": "text"}
+            metadata = {"based_on": "Enterprise AI intelligence"}
+            return answer, intent, data, metadata
+
+        if intent == "query_employees":
+            country = params.get("country")
+            department = params.get("department")
+            job_title = params.get("job_title")
+            min_salary = params.get("min_salary")
+            max_salary = params.get("max_salary")
+            target_curr = params.get("currency") or currency
+            sort_by = params.get("sort_by", "salary")
+            sort_order = params.get("sort_order", "desc")
+            limit = params.get("limit", 10)
+
+            employees, total_matched = cls._query_employees_list(
+                db=db,
+                reporting_currency=target_curr,
+                country=country,
+                department=department,
+                job_title=job_title,
+                min_salary=min_salary,
+                max_salary=max_salary,
+                currency=target_curr,
+                sort_by=sort_by,
+                sort_order=sort_order,
+                limit=limit,
+            )
+
+            if not employees:
+                answer = "No active employees found matching the specified criteria."
+                data = {
+                    "count": 0,
+                    "total_matched": 0,
+                    "employees": [],
+                    "currency": target_curr,
+                    "filters": {
+                        "country": country,
+                        "department": department,
+                        "job_title": job_title,
+                        "min_salary": min_salary,
+                        "max_salary": max_salary,
+                    },
+                }
+                metadata = {"based_on": "Active employee database query"}
+                return answer, intent, data, metadata
+
+            scope_desc = []
+            if job_title:
+                scope_desc.append(f"with role matching '{job_title}'")
+            if department:
+                scope_desc.append(f"in {department}")
+            if country:
+                scope_desc.append(f"in {country}")
+            scope_str = f" {' '.join(scope_desc)}" if scope_desc else ""
+
+            threshold_desc = []
+            if min_salary is not None and max_salary is not None:
+                threshold_desc.append(f"earning between {cls._format_money(min_salary, target_curr)} and {cls._format_money(max_salary, target_curr)}")
+            elif min_salary is not None:
+                threshold_desc.append(f"earning more than {cls._format_money(min_salary, target_curr)}")
+            elif max_salary is not None:
+                threshold_desc.append(f"earning less than {cls._format_money(max_salary, target_curr)}")
+            thresh_str = f" {' '.join(threshold_desc)}" if threshold_desc else ""
+
+            order_desc = "highest paid" if str(sort_order).lower() == "desc" else "lowest paid"
+            if len(employees) == 1:
+                e = employees[0]
+                answer = f"The {order_desc} employee{scope_str}{thresh_str} is {e['name']} ({e['job_title']}, {e['department']}), earning {e['formatted_native']} ({e['formatted_salary']})."
+            else:
+                top_e = employees[0]
+                bottom_e = employees[-1]
+                answer = (
+                    f"Found {len(employees)} employees{scope_str}{thresh_str} ordered by {order_desc} "
+                    f"(ranging from {top_e['formatted_salary']} to {bottom_e['formatted_salary']})."
+                )
+
+            data = {
+                "count": len(employees),
+                "total_matched": total_matched,
+                "employees": employees,
+                "currency": target_curr,
+                "sort_by": sort_by,
+                "sort_order": sort_order,
+                "filters": {
+                    "country": country,
+                    "department": department,
+                    "job_title": job_title,
+                    "min_salary": min_salary,
+                    "max_salary": max_salary,
+                },
+            }
+            metadata = {
+                "based_on": f"Verified active employee compensation records normalized to {target_curr}",
+            }
+            return answer, intent, data, metadata
+
         if intent == "get_employee_count":
             dept = params.get("department")
             country = params.get("country")
@@ -285,7 +208,7 @@ class CompensationAssistantService:
                 "country": country,
             }
             metadata = {
-                "based_on": "Active employee contract records in PostgreSQL",
+                "based_on": "Active employee contract records",
             }
             return answer, intent, data, metadata
 
@@ -391,7 +314,7 @@ class CompensationAssistantService:
                     "No active employees found matching the specified criteria.",
                     intent,
                     {"order": order, "department": dept, "country": country},
-                    {"based_on": "Active employee database query in PostgreSQL"},
+                    {"based_on": "Active employee database query"},
                 )
 
             name = f"{row['first_name']} {row['last_name']}"
@@ -434,7 +357,7 @@ class CompensationAssistantService:
                 "order": order,
             }
             metadata = {
-                "based_on": "Verified employee record and active compensation history in PostgreSQL",
+                "based_on": "Verified employee record and active compensation history",
             }
             return answer, intent, data, metadata
 
@@ -626,19 +549,32 @@ class CompensationAssistantService:
         if intent == "get_salary_range_count":
             min_salary = params.get("min_salary")
             max_salary = params.get("max_salary")
-            count, total_count = cls._query_salary_range(db, currency, min_salary, max_salary)
+            country = params.get("country")
+            dept = params.get("department")
+            target_curr = params.get("currency") or currency
+            count, total_count = cls._query_salary_range(
+                db, target_curr, min_salary, max_salary, country=country, department=dept
+            )
             pct = (count / total_count * 100) if total_count > 0 else 0.0
 
+            scope_desc = []
+            if dept:
+                scope_desc.append(f"in {dept}")
+            if country:
+                scope_desc.append(f"in {country}")
+            scope_str = f" {' '.join(scope_desc)}" if scope_desc else ""
+            pct_scope = f"of workforce {' '.join(scope_desc)}" if scope_desc else "of total workforce"
+
             if min_salary is not None and max_salary is not None:
-                range_text = f"between {cls._format_money(min_salary, currency)} and {cls._format_money(max_salary, currency)}"
+                range_text = f"between {cls._format_money(min_salary, target_curr)} and {cls._format_money(max_salary, target_curr)}"
             elif min_salary is not None:
-                range_text = f"greater than {cls._format_money(min_salary, currency)}"
+                range_text = f"greater than {cls._format_money(min_salary, target_curr)}"
             else:
-                range_text = f"less than {cls._format_money(max_salary, currency)}"
+                range_text = f"less than {cls._format_money(max_salary, target_curr)}"
 
             answer = (
-                f"There are {count:,} employees earning {range_text} "
-                f"({pct:.1f}% of total workforce)."
+                f"There are {count:,} employees{scope_str} earning {range_text} "
+                f"({pct:.1f}% {pct_scope})."
             )
             data = {
                 "count": count,
@@ -646,10 +582,12 @@ class CompensationAssistantService:
                 "percentage": round(pct, 1),
                 "min_salary": min_salary,
                 "max_salary": max_salary,
-                "currency": currency,
+                "currency": target_curr,
+                "country": country,
+                "department": dept,
             }
             metadata = {
-                "based_on": f"Salary range query normalized to {currency}",
+                "based_on": f"Salary range query normalized to {target_curr}",
             }
             return answer, intent, data, metadata
 
@@ -670,21 +608,27 @@ class CompensationAssistantService:
             return answer, intent, data, metadata
 
         answer = (
-            "I specialize in employee headcount and compensation analytics for ACME Corporation. "
-            "You can ask about: employee counts (by department or country), salary averages and medians, "
-            "highest/lowest paid departments or countries, department comparisons, and salary distribution bands."
+            "I specialize in enterprise compensation and employee workforce intelligence. "
+            "You can ask me to search, filter, rank, or analyze our workforce—such as:\n"
+            "• 'Top 50 employees in India by salary'\n"
+            "• 'Employees in India earning more than 50K (lowest 10)'\n"
+            "• 'Who has the highest or lowest salary in Engineering?'\n"
+            "• 'Average and median salary across departments or countries'\n"
+            "• 'Compare Engineering and Finance'\n"
+            "• 'How many employees earn between 50,000 and 100,000?'"
         )
         data = {
             "unsupported_question": original_question,
             "supported_categories": [
-                "Employee Analytics",
-                "Salary Metrics",
-                "Grouping & Comparisons",
-                "Salary Distribution",
+                "Employee Analytics & Headcount",
+                "Salary Rankings & Custom Thresholds",
+                "Department & Country Benchmarks",
+                "Compensation Distribution Bands",
             ],
         }
         metadata = {
             "status": "out_of_scope",
+            "based_on": "Enterprise Intelligence Guidelines",
         }
         return answer, "unsupported_query", data, metadata
 
@@ -695,6 +639,8 @@ class CompensationAssistantService:
         currency: str,
         min_salary: Optional[float],
         max_salary: Optional[float],
+        country: Optional[str] = None,
+        department: Optional[str] = None,
     ) -> Tuple[int, int]:
         rep_curr = currency.strip().upper()
         where_clauses = ["1=1"]
@@ -709,6 +655,15 @@ class CompensationAssistantService:
             params["max_val"] = Decimal(str(max_salary))
 
         where_sql = " AND ".join(where_clauses)
+
+        scope_clauses = ["s.effective_date <= CURRENT_DATE"]
+        if country:
+            scope_clauses.append("e.country = :country")
+            params["country"] = country
+        if department:
+            scope_clauses.append("e.department = :department")
+            params["department"] = department
+        scope_sql = " AND ".join(scope_clauses)
 
         query = text(f"""
         WITH current_salaries AS (
@@ -729,7 +684,7 @@ class CompensationAssistantService:
             LEFT JOIN exchange_rates er_inverse 
                 ON er_inverse.from_currency = :rep_curr 
                 AND er_inverse.to_currency = s.currency
-            WHERE s.effective_date <= CURRENT_DATE
+            WHERE {scope_sql}
             ORDER BY s.employee_id, s.effective_date DESC
         )
         SELECT 
@@ -742,3 +697,170 @@ class CompensationAssistantService:
         if not row:
             return 0, 0
         return int(row.matched_count or 0), int(row.total_count or 0)
+
+    @classmethod
+    def _query_employees_list(
+        cls,
+        db: Session,
+        reporting_currency: str,
+        country: Optional[str] = None,
+        department: Optional[str] = None,
+        job_title: Optional[str] = None,
+        min_salary: Optional[float] = None,
+        max_salary: Optional[float] = None,
+        currency: Optional[str] = None,
+        sort_by: str = "salary",
+        sort_order: str = "desc",
+        limit: int = 10,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        rep_curr = (currency or reporting_currency).strip().upper()
+        order_dir = "ASC" if str(sort_order).lower() == "asc" else "DESC"
+        limit_val = max(1, min(int(limit or 10), 100))
+
+        scope_clauses = ["s.effective_date <= CURRENT_DATE"]
+        sql_params: Dict[str, Any] = {"rep_curr": rep_curr, "limit": limit_val}
+
+        if country:
+            scope_clauses.append("LOWER(e.country) = LOWER(:country)")
+            sql_params["country"] = country
+        if department:
+            scope_clauses.append("LOWER(e.department) = LOWER(:department)")
+            sql_params["department"] = department
+        if job_title:
+            scope_clauses.append("LOWER(e.job_title) LIKE :job_title")
+            sql_params["job_title"] = f"%{job_title.lower()}%"
+
+        scope_sql = " AND ".join(scope_clauses)
+
+        where_clauses = ["1=1"]
+        if min_salary is not None:
+            where_clauses.append("amount_conv >= :min_salary")
+            sql_params["min_salary"] = Decimal(str(min_salary))
+        if max_salary is not None:
+            where_clauses.append("amount_conv <= :max_salary")
+            sql_params["max_salary"] = Decimal(str(max_salary))
+
+        where_sql = " AND ".join(where_clauses)
+
+        if str(sort_by).lower() == "name":
+            order_sql = f"last_name {order_dir}, first_name {order_dir}"
+        else:
+            order_sql = f"amount_conv {order_dir}, employee_id ASC"
+
+        query = text(f"""
+        WITH current_salaries AS (
+            SELECT DISTINCT ON (s.employee_id)
+                s.employee_id,
+                s.amount,
+                s.currency,
+                e.first_name,
+                e.last_name,
+                e.job_title,
+                e.department,
+                e.country
+            FROM salaries s
+            JOIN employees e ON e.id = s.employee_id
+            WHERE {scope_sql}
+            ORDER BY s.employee_id, s.effective_date DESC, s.id DESC
+        ),
+        converted_salaries AS (
+            SELECT
+                cs.employee_id,
+                cs.first_name,
+                cs.last_name,
+                cs.job_title,
+                cs.department,
+                cs.country,
+                cs.currency AS native_currency,
+                cs.amount AS native_amount,
+                ROUND(
+                    cs.amount * COALESCE(
+                        CASE 
+                            WHEN cs.currency = :rep_curr THEN 1.0
+                            WHEN er_direct.rate IS NOT NULL THEN er_direct.rate
+                            WHEN er_inverse.rate IS NOT NULL AND er_inverse.rate > 0 THEN (1.0 / er_inverse.rate)
+                            ELSE 1.0
+                        END, 1.0
+                    ), 2
+                ) AS amount_conv
+            FROM current_salaries cs
+            LEFT JOIN exchange_rates er_direct 
+                ON er_direct.from_currency = cs.currency 
+               AND er_direct.to_currency = :rep_curr
+            LEFT JOIN exchange_rates er_inverse 
+                ON er_inverse.from_currency = :rep_curr 
+               AND er_inverse.to_currency = cs.currency
+        )
+        SELECT * FROM converted_salaries
+        WHERE {where_sql}
+        ORDER BY {order_sql}
+        LIMIT :limit;
+        """)
+
+        rows = db.execute(query, sql_params).mappings().all()
+
+        count_query = text(f"""
+        WITH current_salaries AS (
+            SELECT DISTINCT ON (s.employee_id)
+                s.employee_id,
+                s.amount,
+                s.currency,
+                e.first_name,
+                e.last_name,
+                e.job_title,
+                e.department,
+                e.country
+            FROM salaries s
+            JOIN employees e ON e.id = s.employee_id
+            WHERE {scope_sql}
+            ORDER BY s.employee_id, s.effective_date DESC, s.id DESC
+        ),
+        converted_salaries AS (
+            SELECT
+                cs.employee_id,
+                ROUND(
+                    cs.amount * COALESCE(
+                        CASE 
+                            WHEN cs.currency = :rep_curr THEN 1.0
+                            WHEN er_direct.rate IS NOT NULL THEN er_direct.rate
+                            WHEN er_inverse.rate IS NOT NULL AND er_inverse.rate > 0 THEN (1.0 / er_inverse.rate)
+                            ELSE 1.0
+                        END, 1.0
+                    ), 2
+                ) AS amount_conv
+            FROM current_salaries cs
+            LEFT JOIN exchange_rates er_direct 
+                ON er_direct.from_currency = cs.currency 
+               AND er_direct.to_currency = :rep_curr
+            LEFT JOIN exchange_rates er_inverse 
+                ON er_inverse.from_currency = :rep_curr 
+               AND er_inverse.to_currency = cs.currency
+        )
+        SELECT COUNT(*) FROM converted_salaries
+        WHERE {where_sql};
+        """)
+        total_count = db.execute(count_query, sql_params).scalar() or 0
+
+        employees = []
+        for idx, row in enumerate(rows):
+            raw_amt = float(row["native_amount"])
+            conv_amt = float(row["amount_conv"])
+            native_curr = row["native_currency"]
+            employees.append({
+                "rank": idx + 1,
+                "employee_id": row["employee_id"],
+                "name": f"{row['first_name']} {row['last_name']}",
+                "first_name": row["first_name"],
+                "last_name": row["last_name"],
+                "job_title": row["job_title"],
+                "department": row["department"],
+                "country": row["country"],
+                "native_salary": raw_amt,
+                "native_currency": native_curr,
+                "salary": conv_amt,
+                "currency": rep_curr,
+                "formatted_salary": cls._format_money(conv_amt, rep_curr),
+                "formatted_native": cls._format_money(raw_amt, native_curr),
+            })
+
+        return employees, int(total_count)

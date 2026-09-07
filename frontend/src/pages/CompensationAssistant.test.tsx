@@ -14,7 +14,7 @@ describe('CompensationAssistant Component', () => {
     render(<CompensationAssistant />);
 
     expect(screen.getByText('AI Compensation Assistant')).toBeInTheDocument();
-    expect(screen.getByText('Zero-Hallucination SQL')).toBeInTheDocument();
+    expect(screen.getByText('Zero-Hallucination AI')).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText(/e\.g\. Compare Engineering and Finance/i)
     ).toBeInTheDocument();

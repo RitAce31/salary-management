@@ -166,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <StorageOutlinedIcon fontSize="small" color="success" />
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-            PostgreSQL 17
+            Enterprise Database
           </Typography>
         </Box>
         <Typography variant="caption" color="text.secondary">

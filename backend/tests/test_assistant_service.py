@@ -123,3 +123,68 @@ def test_assistant_top_earning_employee(db):
     assert response.data["first_name"]
     assert response.data["job_title"]
 
+
+def test_assistant_gemini_tool_calling_dispatch(db, monkeypatch):
+    from app.services.gemini_service import GeminiToolService
+
+    monkeypatch.setattr(
+        GeminiToolService,
+        "call_tool",
+        lambda q: ("compare_departments", {"department_a": "Engineering", "department_b": "Sales"}),
+    )
+
+    response = CompensationAssistantService.answer_question(
+        db, "Can you compare engineering with sales?"
+    )
+    assert response.operation == "compare_departments"
+    assert "Engineering" in response.answer
+    assert "AI Verified" in response.metadata["ai_provider"]
+
+
+def test_assistant_gemini_fallback_on_none(db, monkeypatch):
+    from app.services.gemini_service import GeminiToolService
+
+    monkeypatch.setattr(GeminiToolService, "call_tool", lambda q: None)
+
+    response = CompensationAssistantService.answer_question(
+        db, "Can you tell me a joke?"
+    )
+    assert response.operation == "unsupported_query"
+    assert "specializes in employee headcount" in response.answer.lower() or "specialize" in response.answer.lower()
+
+
+def test_assistant_query_employees_top_50(db):
+    response = CompensationAssistantService.answer_question(
+        db, "give me the list of top 50 employee of india based on salary"
+    )
+    assert response.operation == "query_employees"
+    assert len(response.data["employees"]) <= 50
+    assert response.data["sort_order"] == "desc"
+    assert "India" in response.answer
+
+
+def test_assistant_query_employees_threshold_lowest_10(db):
+    response = CompensationAssistantService.answer_question(
+        db, "employee in india with more than 50K salary and give me the lowest 10 of them?"
+    )
+    assert response.operation == "query_employees"
+    assert len(response.data["employees"]) <= 10
+    assert response.data["sort_order"] == "asc"
+
+
+def test_assistant_streaming_endpoint(client):
+    res = client.post(
+        "/api/ask/stream",
+        json={"question": "give me the list of top 50 employee of india based on salary", "reporting_currency": "USD"},
+    )
+    assert res.status_code == 200
+    assert "text/event-stream" in res.headers["content-type"]
+    text_content = res.text
+    assert "event: status" in text_content
+    assert "event: token" in text_content
+    assert "event: result" in text_content
+    assert "event: done" in text_content
+
+
+
+
