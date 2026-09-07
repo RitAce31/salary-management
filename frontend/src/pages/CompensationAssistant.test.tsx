@@ -153,6 +153,43 @@ describe('CompensationAssistant Component', () => {
     });
   });
 
+  it('renders top earning employee profile card', async () => {
+    const user = userEvent.setup();
+    const mockResponse: AssistantResponse = {
+      answer: 'The highest paid employee in India is Linda Thompson (Director of Product, Product), earning ₹7,973,774.91 INR ($95,525.82 USD).',
+      operation: 'get_top_earning_employee',
+      data: {
+        employee_id: 9943,
+        first_name: 'Linda',
+        last_name: 'Thompson',
+        job_title: 'Director of Product',
+        department: 'Product',
+        country: 'India',
+        amount: 7973774.91,
+        currency: 'INR',
+        amount_conv: 95525.82,
+        reporting_currency: 'USD',
+        order: 'highest',
+      },
+      metadata: { based_on: 'Verified employee record' },
+    };
+
+    vi.spyOn(apiService.assistant, 'ask').mockResolvedValue(mockResponse);
+
+    render(<CompensationAssistant />);
+
+    const input = screen.getByPlaceholderText(/e\.g\. Compare Engineering and Finance/i);
+    await user.type(input, 'Who has the highest salary in India?');
+    await user.click(screen.getByRole('button', { name: /ask/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Linda Thompson')).toBeInTheDocument();
+      expect(screen.getByText(/Director of Product • Product • India/)).toBeInTheDocument();
+      expect(screen.getByText('Highest Paid')).toBeInTheDocument();
+      expect(screen.getByText('Contract Salary')).toBeInTheDocument();
+    });
+  });
+
   it('displays error alert when service throws', async () => {
     const user = userEvent.setup();
     vi.spyOn(apiService.assistant, 'ask').mockRejectedValue(new Error('Network connection failed'));

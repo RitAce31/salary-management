@@ -111,3 +111,15 @@ def test_assistant_unsupported_query(db):
     )
     assert response.operation == "unsupported_query"
     assert "specializes in employee headcount" in response.answer.lower() or "specialize" in response.answer.lower()
+
+
+def test_assistant_top_earning_employee(db):
+    response = CompensationAssistantService.answer_question(
+        db, "Who has the highest salary in India?"
+    )
+    assert response.operation == "get_top_earning_employee"
+    assert response.data["country"] == "India"
+    assert "highest paid employee in India" in response.answer
+    assert response.data["first_name"]
+    assert response.data["job_title"]
+

@@ -204,16 +204,26 @@ class CompensationAssistantService:
         if (is_highest or is_lowest) and re.search(r"\bcountry\b", q) and not cls._extract_country(question):
             return "get_highest_lowest_country", {"order": "highest" if is_highest else "lowest"}
 
+        is_salary = bool(re.search(r"\b(salary|salaries|pay|compensation|comp|earn|earning|payroll)\b", q))
         is_count = bool(
             re.search(r"\b(how many|count|headcount|number of employees|total employees|total people)\b", q)
             or (re.search(r"\bemployees\b", q) and not re.search(r"\b(salary|pay|earn|compensation|cost|spend)\b", q))
         )
+
+        is_who = bool(
+            re.search(r"\b(who|which person|which employee|name of the employee|who is|who has|who earns|who gets)\b", q)
+        )
+        if is_who and (is_highest or is_lowest or is_salary or re.search(r"\b(earn|earns|paid|makes)\b", q)):
+            dept = cls._extract_department(question)
+            country = cls._extract_country(question)
+            order = "lowest" if is_lowest else "highest"
+            return "get_top_earning_employee", {"order": order, "department": dept, "country": country}
+
         if is_count:
             dept = cls._extract_department(question)
             country = cls._extract_country(question)
             return "get_employee_count", {"department": dept, "country": country}
 
-        is_salary = bool(re.search(r"\b(salary|salaries|pay|compensation|comp|earn|earning|payroll)\b", q))
         if is_salary or is_highest or is_lowest:
             dept = cls._extract_department(question)
             country = cls._extract_country(question)
@@ -312,6 +322,119 @@ class CompensationAssistantService:
             }
             metadata = {
                 "based_on": f"Current active salary records normalized to {currency}",
+            }
+            return answer, intent, data, metadata
+
+        if intent == "get_top_earning_employee":
+            order = params.get("order", "highest")
+            dept = params.get("department")
+            country = params.get("country")
+
+            where_clauses = ["s.effective_date <= CURRENT_DATE"]
+            sql_params: Dict[str, Any] = {"rep_curr": currency}
+
+            if dept:
+                where_clauses.append("e.department = :dept")
+                sql_params["dept"] = dept
+            if country:
+                where_clauses.append("e.country = :country")
+                sql_params["country"] = country
+
+            where_sql = " AND ".join(where_clauses)
+            order_sql = "DESC" if order == "highest" else "ASC"
+
+            query = text(f"""
+            WITH current_salaries AS (
+                SELECT DISTINCT ON (s.employee_id)
+                    s.employee_id,
+                    s.amount,
+                    s.currency,
+                    e.first_name,
+                    e.last_name,
+                    e.job_title,
+                    e.department,
+                    e.country
+                FROM salaries s
+                JOIN employees e ON e.id = s.employee_id
+                WHERE {where_sql}
+                ORDER BY s.employee_id, s.effective_date DESC, s.id DESC
+            ),
+            converted_salaries AS (
+                SELECT
+                    cs.employee_id,
+                    cs.first_name,
+                    cs.last_name,
+                    cs.job_title,
+                    cs.department,
+                    cs.country,
+                    cs.currency,
+                    cs.amount,
+                    ROUND(
+                        CASE 
+                            WHEN cs.currency = :rep_curr THEN cs.amount
+                            ELSE cs.amount * COALESCE(er.rate, 1.0)
+                        END, 2
+                    ) AS amount_conv
+                FROM current_salaries cs
+                LEFT JOIN exchange_rates er
+                    ON er.from_currency = cs.currency
+                   AND er.to_currency = :rep_curr
+            )
+            SELECT * FROM converted_salaries
+            ORDER BY amount_conv {order_sql}
+            LIMIT 1;
+            """)
+
+            row = db.execute(query, sql_params).mappings().first()
+            if not row:
+                return (
+                    "No active employees found matching the specified criteria.",
+                    intent,
+                    {"order": order, "department": dept, "country": country},
+                    {"based_on": "Active employee database query in PostgreSQL"},
+                )
+
+            name = f"{row['first_name']} {row['last_name']}"
+            role = row["job_title"]
+            dept_name = row["department"]
+            country_name = row["country"]
+            raw_amt = float(row["amount"])
+            native_curr = row["currency"]
+            conv_amt = float(row["amount_conv"])
+
+            formatted_native = cls._format_money(raw_amt, native_curr)
+            formatted_conv = cls._format_money(conv_amt, currency)
+
+            qualifier = "highest paid" if order == "highest" else "lowest paid"
+            scope_desc = []
+            if dept:
+                scope_desc.append(f"in {dept}")
+            if country:
+                scope_desc.append(f"in {country}")
+            scope_str = f" {' '.join(scope_desc)}" if scope_desc else " across ACME Corporation"
+
+            if native_curr == currency:
+                salary_str = formatted_native
+            else:
+                salary_str = f"{formatted_native} ({formatted_conv})"
+
+            answer = f"The {qualifier} employee{scope_str} is {name} ({role}, {dept_name}), earning {salary_str}."
+
+            data = {
+                "employee_id": row["employee_id"],
+                "first_name": row["first_name"],
+                "last_name": row["last_name"],
+                "job_title": role,
+                "department": dept_name,
+                "country": country_name,
+                "amount": raw_amt,
+                "currency": native_curr,
+                "amount_conv": conv_amt,
+                "reporting_currency": currency,
+                "order": order,
+            }
+            metadata = {
+                "based_on": "Verified employee record and active compensation history in PostgreSQL",
             }
             return answer, intent, data, metadata
 

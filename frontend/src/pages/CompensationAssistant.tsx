@@ -23,11 +23,13 @@ import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import SendOutlinedIcon from '@mui/icons-material/SendOutlined';
 import CheckCircleOutlineOutlinedIcon from '@mui/icons-material/CheckCircleOutlineOutlined';
 import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined';
+import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
 
 import { apiService } from '../services/api.service';
 import type { AssistantResponse } from '../types/assistant';
 
 const QUICK_PROMPTS = [
+  'Who has the highest salary in India?',
   'How many employees are there?',
   'How many employees are in India?',
   'How many employees are in Engineering in India?',
@@ -225,6 +227,59 @@ export const CompensationAssistant: React.FC = () => {
             <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', mb: 0.5 }}>
               {count.toLocaleString()} <Typography component="span" variant="body1" color="text.secondary">/ {total.toLocaleString()} employees</Typography>
             </Typography>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (operation === 'get_top_earning_employee') {
+      const name = `${String(data.first_name || '')} ${String(data.last_name || '')}`.trim();
+      const role = String(data.job_title || '');
+      const dept = String(data.department || '');
+      const country = String(data.country || '');
+      const amount = Number(data.amount || 0);
+      const curr = String(data.currency || '');
+      const amountConv = Number(data.amount_conv || 0);
+      const repCurr = String(data.reporting_currency || 'USD');
+      const order = String(data.order || 'highest');
+
+      return (
+        <Card variant="outlined" sx={{ mt: 2, borderRadius: 2, bgcolor: '#f8fafc' }}>
+          <CardContent sx={{ p: 2.5 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PersonOutlineOutlinedIcon color="primary" />
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  {name}
+                </Typography>
+              </Box>
+              <Chip
+                label={order === 'highest' ? 'Highest Paid' : 'Lowest Paid'}
+                size="small"
+                color={order === 'highest' ? 'success' : 'default'}
+                sx={{ fontWeight: 600 }}
+              />
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {role} • {dept} • {country}
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Contract Salary</Typography>
+                <Typography variant="body1" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                  {amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {curr}
+                </Typography>
+              </Box>
+              {curr !== repCurr && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Normalized ({repCurr})</Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                    {amountConv.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {repCurr}
+                  </Typography>
+                </Box>
+              )}
+            </Box>
           </CardContent>
         </Card>
       );
