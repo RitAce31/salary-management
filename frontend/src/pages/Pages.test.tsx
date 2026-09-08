@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EmployeeDirectory } from './EmployeeDirectory';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
@@ -113,6 +113,59 @@ describe('Page Views', () => {
         expect(screen.getByText('EMP-00001')).toBeInTheDocument();
         expect(screen.getByText('John Doe')).toBeInTheDocument();
         expect(screen.getByText('Engineering')).toBeInTheDocument();
+      });
+    });
+
+    it('changes to page 2 when pagination next button is clicked', async () => {
+      const page1Response: PaginatedEmployeesResponse = {
+        ...mockPaginatedEmployees,
+        total: 50,
+        total_pages: 2,
+      };
+      const page2Response: PaginatedEmployeesResponse = {
+        ...mockPaginatedEmployees,
+        page: 2,
+        total: 50,
+        total_pages: 2,
+        items: [
+          {
+            ...mockPaginatedEmployees.items[0],
+            id: 2,
+            employee_code: 'EMP-00002',
+            first_name: 'Jane',
+          },
+        ],
+      };
+
+      const listSpy = vi
+        .spyOn(apiService.employee, 'list')
+        .mockResolvedValueOnce(page1Response)
+        .mockResolvedValueOnce(page2Response);
+
+      render(
+        <EmployeeDirectory
+          isAddModalOpen={false}
+          setIsAddModalOpen={vi.fn()}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('EMP-00001')).toBeInTheDocument();
+      });
+
+      const nextButton = screen.getByRole('button', { name: /next page/i });
+      fireEvent.click(nextButton);
+
+      await waitFor(() => {
+        expect(listSpy).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            page: 2,
+          })
+        );
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('EMP-00002')).toBeInTheDocument();
       });
     });
 

@@ -23,7 +23,14 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
 }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const p = parseInt(params.get('page') || '1', 10);
+      return isNaN(p) || p < 1 ? 1 : p;
+    }
+    return 1;
+  });
   const [pageSize, setPageSize] = useState(25);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -39,6 +46,18 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (currentPage > 1) {
+        url.searchParams.set('page', String(currentPage));
+      } else {
+        url.searchParams.delete('page');
+      }
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [currentPage]);
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
@@ -70,36 +89,54 @@ export const EmployeeDirectory: React.FC<EmployeeDirectoryProps> = ({
     fetchEmployees();
   }, [fetchEmployees]);
 
-  const handleSearchChange = (val: string) => {
-    setSearch(val);
-    setCurrentPage(1);
-  };
+  const handleSearchChange = useCallback((val: string) => {
+    setSearch((prev) => {
+      if (prev !== val) {
+        setCurrentPage(1);
+        return val;
+      }
+      return prev;
+    });
+  }, []);
 
-  const handleDepartmentChange = (val: string) => {
-    setDepartment(val);
-    setCurrentPage(1);
-  };
+  const handleDepartmentChange = useCallback((val: string) => {
+    setDepartment((prev) => {
+      if (prev !== val) {
+        setCurrentPage(1);
+        return val;
+      }
+      return prev;
+    });
+  }, []);
 
-  const handleCountryChange = (val: string) => {
-    setCountry(val);
-    setCurrentPage(1);
-  };
+  const handleCountryChange = useCallback((val: string) => {
+    setCountry((prev) => {
+      if (prev !== val) {
+        setCurrentPage(1);
+        return val;
+      }
+      return prev;
+    });
+  }, []);
 
-  const handleResetFilters = () => {
+  const handleResetFilters = useCallback(() => {
     setSearch('');
     setDepartment('');
     setCountry('');
     setCurrentPage(1);
-  };
+  }, []);
 
-  const handleSort = (column: string) => {
-    if (sortBy === column) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(column);
-      setSortOrder('asc');
-    }
-  };
+  const handleSort = useCallback((column: string) => {
+    setSortBy((prevSortBy) => {
+      if (prevSortBy === column) {
+        setSortOrder((prevOrder) => (prevOrder === 'asc' ? 'desc' : 'asc'));
+        return prevSortBy;
+      } else {
+        setSortOrder('asc');
+        return column;
+      }
+    });
+  }, []);
 
   return (
     <Box>

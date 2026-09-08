@@ -154,3 +154,17 @@ def test_list_employees_pagination_and_current_salaries(db):
     assert total_search == 1
     assert employees_search[0].first_name == "Worker1"
 
+    # 3. Test full name search (first + last name combined)
+    employees_fullname, total_fullname, _ = list_employees(
+        db, page=1, page_size=10, search="Worker1 Test"
+    )
+    assert total_fullname == 1
+    assert employees_fullname[0].first_name == "Worker1"
+
+    # 4. Test reverse full name search (last + first name)
+    employees_rev, total_rev, _ = list_employees(
+        db, page=1, page_size=10, search="Test Worker2"
+    )
+    assert total_rev == 1
+    assert employees_rev[0].first_name == "Worker2"
+
