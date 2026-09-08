@@ -56,11 +56,17 @@ export const EmployeeFilters: React.FC<EmployeeFiltersProps> = ({
   const [localSearch, setLocalSearch] = useState(search);
 
   useEffect(() => {
+    setLocalSearch(search);
+  }, [search]);
+
+  useEffect(() => {
+    if (localSearch === search) return;
+
     const timer = setTimeout(() => {
       onSearchChange(localSearch);
     }, 300);
     return () => clearTimeout(timer);
-  }, [localSearch, onSearchChange]);
+  }, [localSearch, search, onSearchChange]);
 
   const handleReset = () => {
     setLocalSearch('');

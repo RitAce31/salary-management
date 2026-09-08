@@ -1,6 +1,6 @@
 from datetime import date
 from typing import Dict, List, Optional, Tuple
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 from app.db.models import Employee, Salary
 from app.domain.schemas import EmployeeCreate, EmployeeUpdate
@@ -89,15 +89,43 @@ def list_employees(
     if country:
         stmt = stmt.where(Employee.country == country)
     if search:
-        search_term = f"%{search.strip()}%"
-        stmt = stmt.where(
-            or_(
-                Employee.first_name.ilike(search_term),
-                Employee.last_name.ilike(search_term),
-                Employee.email.ilike(search_term),
-                Employee.employee_code.ilike(search_term),
+        search_clean = search.strip()
+        search_term = f"%{search_clean}%"
+        full_name = func.concat(Employee.first_name, " ", Employee.last_name)
+        reverse_full_name = func.concat(Employee.last_name, " ", Employee.first_name)
+
+        words = search_clean.split()
+        if len(words) > 1:
+            word_conditions = [
+                or_(
+                    Employee.first_name.ilike(f"%{w}%"),
+                    Employee.last_name.ilike(f"%{w}%"),
+                    Employee.email.ilike(f"%{w}%"),
+                    Employee.employee_code.ilike(f"%{w}%"),
+                    Employee.job_title.ilike(f"%{w}%"),
+                )
+                for w in words
+            ]
+            stmt = stmt.where(
+                or_(
+                    full_name.ilike(search_term),
+                    reverse_full_name.ilike(search_term),
+                    Employee.email.ilike(search_term),
+                    Employee.employee_code.ilike(search_term),
+                    and_(*word_conditions),
+                )
             )
-        )
+        else:
+            stmt = stmt.where(
+                or_(
+                    Employee.first_name.ilike(search_term),
+                    Employee.last_name.ilike(search_term),
+                    full_name.ilike(search_term),
+                    Employee.email.ilike(search_term),
+                    Employee.employee_code.ilike(search_term),
+                    Employee.job_title.ilike(search_term),
+                )
+            )
 
     # Total Count
     count_stmt = select(func.count()).select_from(stmt.subquery())

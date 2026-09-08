@@ -92,6 +92,13 @@ def test_get_employees_paginated(client):
     assert filtered_data["total"] == 1
     assert filtered_data["items"][0]["department"] == "Sales"
 
+    # Search by full name (first + last name with space)
+    fullname_resp = client.get("/api/employees?search=User1 List")
+    assert fullname_resp.status_code == 200
+    fullname_data = fullname_resp.json()
+    assert fullname_data["total"] == 1
+    assert fullname_data["items"][0]["employee_code"] == "EMP-LIST-001"
+
 
 
 def test_get_employee_detail_with_history(client):
